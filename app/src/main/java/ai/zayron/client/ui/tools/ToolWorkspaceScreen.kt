@@ -1,0 +1,255 @@
+package ai.zayron.client.ui.tools
+
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+
+private val ToolPurple = Color(0xFF5146D8)
+
+/**
+ * Unified workspace panels for the five non-chat tools.
+ *
+ * File selection is performed locally with Android's system picker. Processing
+ * buttons remain disabled until the corresponding secure backend is integrated.
+ */
+@Composable
+fun ToolWorkspaceScreen(
+    mode: String,
+    modifier: Modifier = Modifier
+) {
+    var selectedImage by remember { mutableStateOf<Uri?>(null) }
+    var selectedDocument by remember { mutableStateOf<Uri?>(null) }
+    var prompt by remember { mutableStateOf("") }
+    var appBrief by remember { mutableStateOf("") }
+
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri -> selectedImage = uri }
+
+    val documentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri -> selectedDocument = uri }
+
+    Column(
+        modifier = modifier.fillMaxSize().padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        when (mode) {
+            "Video Generation" -> {
+                ToolHeading(
+                    icon = { Icon(Icons.Default.VideoLibrary, null, tint = ToolPurple) },
+                    title = "Image-to-Video",
+                    subtitle = "Prepare a source image and describe the motion you want."
+                )
+                SelectionCard(
+                    title = if (selectedImage == null) "No source image selected" else "Source image selected",
+                    detail = "Choose an image from your phone. It stays on this device until a service is connected.",
+                    buttonText = "Choose image",
+                    onClick = { imagePicker.launch("image/*") }
+                )
+                OutlinedTextField(
+                    value = prompt,
+                    onValueChange = { prompt = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Motion prompt") },
+                    placeholder = { Text("Describe the movement, camera motion and atmosphere…") },
+                    minLines = 3
+                )
+                ServiceNotice("Video generation is not connected yet. Your image and prompt are not uploaded.")
+                Button(
+                    onClick = {},
+                    enabled = false,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Generation service not connected") }
+            }
+
+            "Image Editing" -> {
+                ToolHeading(
+                    icon = { Icon(Icons.Default.Image, null, tint = ToolPurple) },
+                    title = "AI Inpaint & Eraser",
+                    subtitle = "Choose a photo to prepare it for editing."
+                )
+                SelectionCard(
+                    title = if (selectedImage == null) "No photo selected" else "Photo selected",
+                    detail = "The photo is selected locally. Mask painting and AI processing will be added with the editing engine.",
+                    buttonText = "Choose photo",
+                    onClick = { imagePicker.launch("image/*") }
+                )
+                OutlinedTextField(
+                    value = prompt,
+                    onValueChange = { prompt = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Editing instruction (optional)") },
+                    placeholder = { Text("Describe what should be removed or changed…") },
+                    minLines = 2
+                )
+                ServiceNotice("No image is uploaded or modified in this preview. The inpainting and eraser engine is not connected.")
+                Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+                    Text("Editing service not connected")
+                }
+            }
+
+            "Document AI" -> {
+                ToolHeading(
+                    icon = { Icon(Icons.Default.Description, null, tint = ToolPurple) },
+                    title = "Document AI",
+                    subtitle = "Select a document to prepare for secure analysis."
+                )
+                SelectionCard(
+                    title = if (selectedDocument == null) "No document selected" else "Document selected",
+                    detail = "Choose a PDF, text document or another supported file from your phone.",
+                    buttonText = "Choose document",
+                    onClick = { documentPicker.launch(arrayOf("application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) }
+                )
+                ServiceNotice("Document reading, question answering, citations and private indexing require the document backend. The selected file is not uploaded.")
+                Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+                    Text("Document analysis not connected")
+                }
+            }
+
+            "App Builder" -> {
+                ToolHeading(
+                    icon = { Icon(Icons.Default.PhoneAndroid, null, tint = ToolPurple) },
+                    title = "AI App Builder",
+                    subtitle = "Describe the Android app you want to create."
+                )
+                OutlinedTextField(
+                    value = appBrief,
+                    onValueChange = { appBrief = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("App idea") },
+                    placeholder = { Text("Explain the app's purpose, users, main screens and features…") },
+                    minLines = 5
+                )
+                ServiceNotice("This field is a local project brief only. Code generation, preview, build workers and APK export are not connected.")
+                Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+                    Text("Build service not connected")
+                }
+            }
+
+            "Voice Assistant" -> {
+                ToolHeading(
+                    icon = { Icon(Icons.Default.Mic, null, tint = ToolPurple) },
+                    title = "Voice Assistant",
+                    subtitle = "A voice-first interface for hands-free interaction."
+                )
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Default.Mic, null, tint = ToolPurple)
+                        Text("Voice workspace", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Microphone capture, speech recognition, spoken AI replies and conversation controls will be integrated here.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                ServiceNotice("Voice recognition and AI response services are not connected. The app is not listening.")
+                Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+                    Text("Voice service not connected")
+                }
+            }
+
+            else -> {
+                ToolHeading(
+                    icon = { Icon(Icons.Default.AutoAwesome, null, tint = ToolPurple) },
+                    title = mode,
+                    subtitle = "Select a tool from the workspace switcher."
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+@Composable
+private fun ToolHeading(
+    icon: @Composable () -> Unit,
+    title: String,
+    subtitle: String
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Surface(shape = RoundedCornerShape(14.dp), color = ToolPurple.copy(alpha = 0.09f)) {
+            androidx.compose.foundation.layout.Box(Modifier.padding(12.dp)) { icon() }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SelectionCard(
+    title: String,
+    detail: String,
+    buttonText: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = onClick) {
+                Text(buttonText)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ServiceNotice(message: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F0FF))
+    ) {
+        Text(
+            message,
+            modifier = Modifier.padding(14.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF393278)
+        )
+    }
+}

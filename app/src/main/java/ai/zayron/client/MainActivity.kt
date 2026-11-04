@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import ai.zayron.client.ui.chat.ChatScreen
+import ai.zayron.client.ui.tools.ToolWorkspaceScreen
 
 private val ZayronPurple = Color(0xFF5146D8)
 private val ZayronModes = listOf("AI Chat", "Video Generation", "Image Editing", "Document AI", "App Builder", "Voice Assistant")
@@ -125,18 +126,7 @@ private fun Workspace() {
             if (mode == "AI Chat") {
                 ChatScreen(Modifier.fillMaxSize())
             } else {
-                Column(
-                    Modifier.fillMaxSize().padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Spacer(Modifier.height(28.dp))
-                    Text(mode, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    Text("This unified workspace mode is selected. Its full tool workflow and secure service connection are planned next.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                        Text("Mode switch is active. This tool is not connected yet.", Modifier.padding(18.dp))
-                    }
-                }
+                ToolWorkspaceScreen(mode = mode, modifier = Modifier.fillMaxSize())
             }
         }
     }
