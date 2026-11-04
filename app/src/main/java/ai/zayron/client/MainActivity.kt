@@ -5,13 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import ai.zayron.client.ui.chat.ChatScreen
 
 private val ZayronPurple = Color(0xFF5146D8)
 private val ZayronModes = listOf("AI Chat", "Video Generation", "Image Editing", "Document AI", "App Builder", "Voice Assistant")
@@ -92,8 +90,6 @@ private fun SignIn(onPreview: () -> Unit) {
 private fun Workspace() {
     var mode by rememberSaveable { mutableStateOf("AI Chat") }
     var menu by remember { mutableStateOf(false) }
-    var draft by rememberSaveable { mutableStateOf("") }
-    val messages = remember { mutableStateListOf<String>() }
 
     Scaffold(
         topBar = {
@@ -125,43 +121,21 @@ private fun Workspace() {
         },
         containerColor = Color(0xFFFAFAFD)
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.fillMaxSize().padding(padding)) {
             if (mode == "AI Chat") {
-                if (messages.isEmpty()) {
-                    Spacer(Modifier.height(58.dp))
-                    Icon(Icons.Default.AutoAwesome, null, tint = ZayronPurple, modifier = Modifier.size(34.dp))
-                    Text("What can I help you with?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    Text("Your AI workspace starts here. Ask a question, explore an idea or create something new.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(messages) { message ->
-                            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                                Text(message, Modifier.padding(16.dp))
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.weight(1f, fill = false))
-                OutlinedTextField(
-                    value = draft, onValueChange = { draft = it }, modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Message Zayron AI...") }, shape = RoundedCornerShape(24.dp),
-                    trailingIcon = {
-                        TextButton(enabled = draft.isNotBlank(), onClick = {
-                            messages.add(draft.trim()); draft = ""
-                        }) { Text("Send") }
-                    }
-                )
-                Text("Interface preview — AI replies activate after the secure backend is connected.",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 10.dp))
+                ChatScreen(Modifier.fillMaxSize())
             } else {
-                Spacer(Modifier.height(48.dp))
-                Text(mode, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                Text("This unified workspace mode is selected. Its full tool workflow and secure service connection are the next implementation step.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                    Text("Mode switch is active. This tool is not connected yet.", Modifier.padding(18.dp))
+                Column(
+                    Modifier.fillMaxSize().padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Spacer(Modifier.height(28.dp))
+                    Text(mode, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text("This unified workspace mode is selected. Its full tool workflow and secure service connection are planned next.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Text("Mode switch is active. This tool is not connected yet.", Modifier.padding(18.dp))
+                    }
                 }
             }
         }
