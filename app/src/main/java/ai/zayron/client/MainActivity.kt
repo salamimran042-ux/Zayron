@@ -4,215 +4,164 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Photo
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.IconButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 
-private data class ZayronTool(
-    val title: String,
-    val description: String,
-    val route: String,
-    val icon: ImageVector
-)
-
-private val tools = listOf(
-    ZayronTool("Conversational AI", "Chat, ask questions and create", "chat", Icons.Default.Chat),
-    ZayronTool("Image-to-Video", "Turn images into motion", "video", Icons.Default.Image),
-    ZayronTool("AI Inpaint & Eraser", "Edit and remove image elements", "photo", Icons.Default.Photo),
-    ZayronTool("Document AI", "Understand and ask about files", "documents", Icons.Default.Description),
-    ZayronTool("AI App Builder", "Plan and generate app projects", "builder", Icons.Default.AutoAwesome),
-    ZayronTool("Voice Assistant", "Speak and listen naturally", "voice", Icons.Default.Mic)
-)
+private val ZayronPurple = Color(0xFF5146D8)
+private val ZayronModes = listOf("AI Chat", "Video Generation", "Image Editing", "Document AI", "App Builder", "Voice Assistant")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { ZayronTheme { ZayronApp() } }
+        setContent {
+            MaterialTheme(colorScheme = lightColorScheme(primary = ZayronPurple, background = Color(0xFFFAFAFD))) {
+                ZayronRoot()
+            }
+        }
     }
 }
 
 @Composable
-private fun ZayronTheme(content: @Composable () -> Unit) {
-    var darkMode by rememberSaveable { mutableStateOf(false) }
-    val light = lightColorScheme(
-        primary = Color(0xFF5146D8),
-        secondary = Color(0xFF168C83),
-        background = Color(0xFFF7F8FC),
-        surface = Color.White
-    )
-    val dark = darkColorScheme()
-    MaterialTheme(colorScheme = if (darkMode) dark else light, content = content)
+private fun ZayronLogo(size: Int = 56) {
+    Box(Modifier.size(size.dp).clip(RoundedCornerShape((size / 3).dp)).background(ZayronPurple), Alignment.Center) {
+        Text("Z", color = Color.White, fontWeight = FontWeight.Black, style = MaterialTheme.typography.headlineMedium)
+    }
 }
 
 @Composable
-private fun ZayronApp() {
-    val nav = rememberNavController()
-    NavHost(navController = nav, startDestination = "home") {
-        composable("home") {
-            DashboardScreen(onToolSelected = { nav.navigate(it) })
-        }
-        tools.forEach { tool ->
-            composable(tool.route) {
-                ToolPlaceholderScreen(tool = tool, onBack = { nav.popBackStack() })
+private fun ZayronRoot() {
+    var preview by rememberSaveable { mutableStateOf(false) }
+    if (preview) Workspace() else SignIn(onPreview = { preview = true })
+}
+
+@Composable
+private fun SignIn(onPreview: () -> Unit) {
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    Surface(Modifier.fillMaxSize(), color = Color.White) {
+        Column(
+            Modifier.fillMaxSize().padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            ZayronLogo(78)
+            Spacer(Modifier.height(16.dp))
+            Text("ZAYRON AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Think Beyond Limits.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(40.dp))
+            Text("Welcome back", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("Sign in to your AI workspace", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(22.dp))
+            OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text("Email address") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation())
+            Spacer(Modifier.height(16.dp))
+            Button({}, enabled = false, modifier = Modifier.fillMaxWidth().height(50.dp)) {
+                Icon(Icons.Default.Lock, null); Spacer(Modifier.width(8.dp)); Text("Sign in")
             }
+            Text("Secure sign-in requires the authentication backend, which is not connected yet.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 10.dp))
+            TextButton(onClick = onPreview) { Text("Preview workspace") }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DashboardScreen(onToolSelected: (String) -> Unit) {
+private fun Workspace() {
+    var mode by rememberSaveable { mutableStateOf("AI Chat") }
+    var menu by remember { mutableStateOf(false) }
+    var draft by rememberSaveable { mutableStateOf("") }
+    val messages = remember { mutableStateListOf<String>() }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("ZAYRON AI", fontWeight = FontWeight.Bold)
-                        Text("Think Beyond Limits.", style = MaterialTheme.typography.labelSmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ZayronLogo(36)
+                        Spacer(Modifier.width(9.dp))
+                        Column {
+                            Text("ZAYRON AI", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Text("Think Beyond Limits.", style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                actions = {
+                    Box {
+                        OutlinedButton(onClick = { menu = true }, modifier = Modifier.padding(end = 8.dp)) {
+                            Text(mode, maxLines = 1); Icon(Icons.Default.ArrowDropDown, "Select mode")
+                        }
+                        DropdownMenu(menu, { menu = false }) {
+                            ZayronModes.forEach { item ->
+                                DropdownMenuItem(text = { Text(item) }, onClick = { mode = item; menu = false })
+                            }
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = Color(0xFFFAFAFD)
     ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Spacer(Modifier.height(8.dp))
-            Text("Your AI workspace", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text(
-                "Choose a tool to get started.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(tools) { tool ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().height(166.dp).clickable { onToolSelected(tool.route) },
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxSize().padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer
-                            ) {
-                                Icon(
-                                    tool.icon,
-                                    contentDescription = null,
-                                    modifier = Modifier.padding(10.dp),
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
+        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (mode == "AI Chat") {
+                if (messages.isEmpty()) {
+                    Spacer(Modifier.height(58.dp))
+                    Icon(Icons.Default.AutoAwesome, null, tint = ZayronPurple, modifier = Modifier.size(34.dp))
+                    Text("What can I help you with?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Your AI workspace starts here. Ask a question, explore an idea or create something new.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(messages) { message ->
+                            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                                Text(message, Modifier.padding(16.dp))
                             }
-                            Text(tool.title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                tool.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ToolPlaceholderScreen(tool: ZayronTool, onBack: () -> Unit) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(tool.title) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                Spacer(Modifier.weight(1f, fill = false))
+                OutlinedTextField(
+                    value = draft, onValueChange = { draft = it }, modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Message Zayron AI...") }, shape = RoundedCornerShape(24.dp),
+                    trailingIcon = {
+                        TextButton(enabled = draft.isNotBlank(), onClick = {
+                            messages.add(draft.trim()); draft = ""
+                        }) { Text("Send") }
                     }
-                }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Icon(tool.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Text(tool.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text(tool.description, style = MaterialTheme.typography.bodyLarge)
-            Card(shape = RoundedCornerShape(16.dp)) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Foundation screen", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "This screen is part of the Zayron AI app foundation. Its AI workflow is not connected yet.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        if (AiServiceConfig.isConfigured) "Backend URL configured; service integration still required."
-                        else "Backend not configured. No AI requests are being sent.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                )
+                Text("Interface preview — AI replies activate after the secure backend is connected.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 10.dp))
+            } else {
+                Spacer(Modifier.height(48.dp))
+                Text(mode, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text("This unified workspace mode is selected. Its full tool workflow and secure service connection are the next implementation step.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Text("Mode switch is active. This tool is not connected yet.", Modifier.padding(18.dp))
                 }
             }
         }
