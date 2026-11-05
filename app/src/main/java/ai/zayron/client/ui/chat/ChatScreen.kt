@@ -34,6 +34,7 @@ fun ChatScreen(
     chatViewModel: ChatViewModel = viewModel()
 ) {
     var draft by rememberSaveable { mutableStateOf("") }
+    var confirmClear by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val messages = chatViewModel.messages
 
@@ -41,10 +42,25 @@ fun ChatScreen(
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
 
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Clear local conversation?") },
+            text = { Text("This permanently removes the messages saved on this device. It does not affect any online account.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    chatViewModel.clearConversation()
+                    confirmClear = false
+                }) { Text("Clear messages") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) { Text("Keep messages") }
+            }
+        )
+    }
+
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(
@@ -55,13 +71,13 @@ fun ChatScreen(
                 Text("AI Chat", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
                     if (AiServiceConfig.isConfigured) "Backend address configured"
-                    else "Your private AI workspace",
+                    else "Private workspace preview",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             if (messages.isNotEmpty()) {
-                IconButton(onClick = { chatViewModel.clearConversation() }) {
+                IconButton(onClick = { confirmClear = true }) {
                     Icon(Icons.Default.DeleteOutline, contentDescription = "Clear conversation")
                 }
             }
@@ -104,7 +120,7 @@ fun ChatScreen(
                         ) {
                             Text(message.text, color = Color.White, style = MaterialTheme.typography.bodyLarge)
                             Spacer(Modifier.height(4.dp))
-                            Text("Not sent • preview only", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelSmall)
+                            Text("Saved on this device • not sent", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
@@ -121,7 +137,7 @@ fun ChatScreen(
                 modifier = Modifier.padding(start = 16.dp, end = 7.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                androidx.compose.material3.OutlinedTextField(
+                OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it },
                     modifier = Modifier.weight(1f),
@@ -150,13 +166,13 @@ fun ChatScreen(
                         if (draft.isNotBlank()) ChatPurple else ChatPurple.copy(alpha = 0.35f)
                     )
                 ) {
-                    Icon(Icons.Default.Send, contentDescription = "Send message", tint = Color.White)
+                    Icon(Icons.Default.Send, contentDescription = "Save message", tint = Color.White)
                 }
             }
         }
 
         Text(
-            "Preview mode: messages stay in this session. AI replies and secure delivery are not connected yet.",
+            "Local preview: messages are saved privately on this device. AI replies, cloud sync and secure delivery are not connected yet.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
