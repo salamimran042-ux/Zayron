@@ -36,7 +36,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Document AI: file selection only; no parsing, retrieval, citations or document upload.
 - App Builder: local app brief only; no code generation, preview, build worker or APK export.
 - Voice Assistant: interface only; no microphone capture, speech recognition or spoken AI response.
-- Network layer: shared transport, typed result handling and safe user-facing error mapping are prepared, but no backend endpoint is called and no authentication/session interceptor exists.
+- Network layer: shared transport, typed result handling, safe user-facing error mapping, a typed chat-stream contract, complete-frame SSE event parsing and incremental SSE frame decoding are prepared and covered by JVM tests. No backend endpoint is called and no authentication/session interceptor exists.
 - Chat repository abstraction currently uses a local SharedPreferences implementation only; no remote repository is connected.
 
 ## Not yet implemented
