@@ -4,7 +4,7 @@
 **Tagline:** Think Beyond Limits.  
 **Android application ID / namespace:** `ai.zayron.client`
 
-This document separates what is present in the Android client from services that still need implementation. A successful APK build proves compilation and packaging only; it does not prove that remote AI services work.
+A successful APK build proves compilation and packaging only; it does not prove that remote AI services work.
 
 ## Working in the current client
 
@@ -15,7 +15,8 @@ This document separates what is present in the Android client from services that
 - Local prompt / app-brief entry fields.
 - Explicit UI notices where a remote service is not connected.
 - GitHub Actions compiles checked-in repository source and uploads a debug APK.
-- Shared OkHttp transport foundation with bounded timeouts and HTTPS-only backend URL resolution.
+- Shared OkHttp transport with bounded timeouts, HTTPS-only URL resolution and off-main-thread request execution.
+- Typed network outcomes distinguish successful responses, HTTP errors, unconfigured backend, rejected destinations and connection failures.
 
 ## Partial / preparation only
 
@@ -26,7 +27,7 @@ This document separates what is present in the Android client from services that
 - Document AI: file selection only; no parsing, retrieval, citations or document upload.
 - App Builder: local app brief only; no code generation, preview, build worker or APK export.
 - Voice Assistant: interface only; no microphone capture, speech recognition or spoken AI response.
-- Network layer: shared HTTP client is prepared, but no API calls, authentication interceptor, token storage or backend endpoint is active.
+- Network layer: shared transport and result handling are prepared, but no backend endpoint is called and no authentication/session interceptor exists.
 
 ## Not yet implemented
 
@@ -42,11 +43,13 @@ This document separates what is present in the Android client from services that
 
 ## Security and release notes
 
-- The Android manifest includes the normal INTERNET permission for future backend communication. The permission alone does not initiate a network request.
+- The Android manifest includes the normal INTERNET permission; this alone does not initiate a network request.
 - The backend URL remains empty until a real Zayron backend is deployed. The client refuses non-HTTPS backend URLs.
-- Never embed provider API keys or service credentials in the Android APK.
-- The shared HTTP client has connection, read, write and overall call timeouts. It deliberately has no body/header logging interceptor.
-- Authentication must be added only after the backend session contract is defined; do not store production credentials in debug builds.
+- Requests are restricted to the configured backend host, port and base path; absolute external destinations and path traversal are rejected.
+- Network calls run on the IO dispatcher and use bounded timeouts.
+- HTTP error responses are represented separately from transport failures. Response bodies should be parsed carefully and must not be exposed as raw user-facing error text.
+- No body/header logging interceptor is installed. Never embed provider API keys or service credentials in the APK.
+- Authentication must be added only after the backend session contract is defined, using secure session storage and server-side authorization.
 - The chat preview is stored in app-private local preferences. It is not encrypted chat backup, account sync or a substitute for a secure backend.
 - Debug APKs from separate GitHub-hosted runners may have different debug signing certificates. An update may therefore require a matching signing key or uninstalling the previous debug build (which can erase local app data).
 - Do not label a feature as AI-powered until the complete backend path has been integrated and tested.
