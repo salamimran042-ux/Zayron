@@ -36,7 +36,7 @@ Base path: `/api/v1`
 - Job creation returns `jobId`, `status` and an optional estimated wait message. Do not invent completion percentages.
 - Every operation has an idempotency key to prevent accidental duplicate jobs or charges.
 - The backend returns only resources belonging to the authenticated user.
-- Client-visible error messages are safe and do not expose provider or infrastructure details.
+- Client-visible error messages are safe and do not expose provider or infrastructure details. The Android client maps documented error `code` values to approved messages; it must never display raw response bodies.
 
 ## Required acceptance tests before enabling a feature
 

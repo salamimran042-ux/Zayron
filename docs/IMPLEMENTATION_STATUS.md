@@ -18,6 +18,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - GitHub Actions compiles checked-in repository source and uploads a debug APK.
 - Shared OkHttp transport with bounded timeouts, HTTPS-only URL resolution and off-main-thread request execution.
 - Typed network outcomes distinguish successful responses, HTTP errors, unconfigured backend, rejected destinations and connection failures.
+- Safe API error mapping converts documented server error codes and HTTP statuses into user-facing messages without exposing raw server response bodies.
 
 ## Partial / preparation only
 
@@ -28,7 +29,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Document AI: file selection only; no parsing, retrieval, citations or document upload.
 - App Builder: local app brief only; no code generation, preview, build worker or APK export.
 - Voice Assistant: interface only; no microphone capture, speech recognition or spoken AI response.
-- Network layer: shared transport and result handling are prepared, but no backend endpoint is called and no authentication/session interceptor exists.
+- Network layer: shared transport, typed result handling and safe user-facing error mapping are prepared, but no backend endpoint is called and no authentication/session interceptor exists.
 - Chat repository abstraction currently uses a local SharedPreferences implementation only; no remote repository is connected.
 
 ## Not yet implemented
