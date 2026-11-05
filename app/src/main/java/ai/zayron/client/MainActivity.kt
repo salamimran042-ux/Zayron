@@ -54,7 +54,7 @@ private fun ZayronRoot() {
 @Composable
 private fun SignIn(onPreview: () -> Unit) {
     var email by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     Surface(Modifier.fillMaxSize(), color = Color.White) {
         Column(
             Modifier.fillMaxSize().padding(28.dp),
