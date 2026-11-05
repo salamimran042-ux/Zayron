@@ -21,6 +21,8 @@ sealed class ChatStreamEvent {
     data class Delta(val text: String) : ChatStreamEvent()
     data class Completed(val messageId: String?) : ChatStreamEvent()
     data class Failed(val code: String?) : ChatStreamEvent()
+    /** Protocol sentinel only; it is not proof that the assistant message completed. */
+    data object Done : ChatStreamEvent()
 }
 
 /** Parses a single complete SSE event; unknown and malformed events are ignored. */
@@ -29,7 +31,7 @@ object ChatStreamEventParser {
         val type = eventName?.trim()?.lowercase().orEmpty()
         val payload = data.trim()
         if (payload.isEmpty()) return null
-        if (payload == "[DONE]") return ChatStreamEvent.Completed(null)
+        if (payload == "[DONE]") return ChatStreamEvent.Done
         val json = try { JSONObject(payload) } catch (_: Exception) { return null }
         return when (type) {
             "message.delta" -> json.optString("delta").takeIf { it.isNotEmpty() }?.let { ChatStreamEvent.Delta(it) }

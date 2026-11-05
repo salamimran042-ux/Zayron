@@ -21,9 +21,7 @@ fun interface ChatAccessTokenProvider {
 
 /**
  * OkHttp SSE transport for the proposed POST /api/v1/chat/stream endpoint.
- *
- * It is deliberately not wired into the chat UI: the backend URL and session
- * implementation must exist before this data source is used in production.
+ * It remains separate from the chat UI until a real backend and session store exist.
  */
 class OkHttpChatRemoteDataSource(
     private val accessTokenProvider: ChatAccessTokenProvider?,
@@ -37,6 +35,9 @@ class OkHttpChatRemoteDataSource(
         request: ChatStreamRequest,
         onEvent: (ChatStreamEvent) -> Unit
     ): NetworkResult<Unit> {
+        if (request.requestId.isBlank() || request.messages.isEmpty()) {
+            return NetworkResult.RejectedRequest
+        }
         val endpoint = endpointProvider() ?: return NetworkResult.NotConfigured
         val token = accessTokenProvider?.getAccessToken()
             ?.takeIf { it.isNotBlank() }
@@ -45,6 +46,7 @@ class OkHttpChatRemoteDataSource(
         val httpRequest = Request.Builder()
             .url(endpoint)
             .header("Accept", "text/event-stream")
+            .header("Idempotency-Key", request.requestId)
             .header("Authorization", "Bearer $token")
             .post(request.toJson().toRequestBody(JSON_MEDIA_TYPE))
             .build()
@@ -90,7 +92,6 @@ class OkHttpChatRemoteDataSource(
                             }
 
                             if (terminalResult == null && continuation.isActive) {
-                                // Preserve a final line that did not end in LF/CR before EOF.
                                 val trailing = source.buffer.readUtf8()
                                 decoder.append(trailing, endOfInput = true).forEach { event ->
                                     onEvent(event)
@@ -115,7 +116,7 @@ class OkHttpChatRemoteDataSource(
         when (this) {
             is ChatStreamEvent.Completed -> NetworkResult.Success(Unit, statusCode)
             is ChatStreamEvent.Failed -> NetworkResult.StreamError(code)
-            is ChatStreamEvent.Delta -> null
+            is ChatStreamEvent.Delta, ChatStreamEvent.Done -> null
         }
 
     private companion object {

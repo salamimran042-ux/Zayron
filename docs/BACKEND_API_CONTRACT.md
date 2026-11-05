@@ -32,7 +32,7 @@ Base path: `/api/v1`
 
 ## Chat streaming wire contract (proposed, not deployed)
 
-Proposed authenticated request: `POST /api/v1/chat/stream`, JSON request body, `Accept: text/event-stream`, and a unique `Idempotency-Key` matching `requestId`.
+Proposed authenticated request: `POST /api/v1/chat/stream`, JSON request body, `Accept: text/event-stream`, `Authorization: Bearer <access-token>`, and an `Idempotency-Key` header matching the JSON `requestId`.
 
 ```json
 {
@@ -56,9 +56,9 @@ Supported events:
 - `message.delta`: JSON `{"delta":"text fragment"}`; append to the in-progress assistant message.
 - `message.completed`: JSON `{"messageId":"..."}`; confirms success. Only now may the client mark the response SENT.
 - `error`: JSON `{"code":"DOCUMENTED_ERROR_CODE"}`; terminate and map the code to an approved safe message.
-- `data: [DONE]`: optional terminal sentinel; it does not replace the completion event's message ID.
+- `data: [DONE]`: optional protocol sentinel only. It is not proof of successful completion and does not replace `message.completed`.
 
-Unknown events and malformed frames are ignored. A disconnect before completion is an incomplete/failed response, never a successful answer. Retry the same logical request with the same idempotency key. Server events must never contain provider secrets, stack traces or private account data.
+Unknown events and malformed frames are ignored. A disconnect or `[DONE]` sentinel before `message.completed` is an incomplete/failed response, never a successful answer. Retry the same logical request with the same idempotency key. Server events must never contain provider secrets, stack traces or private account data.
 
 ## Android authentication boundary
 

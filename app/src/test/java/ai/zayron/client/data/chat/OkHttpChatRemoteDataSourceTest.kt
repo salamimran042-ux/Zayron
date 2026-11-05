@@ -11,7 +11,7 @@ import org.junit.Test
 class OkHttpChatRemoteDataSourceTest {
 
     @Test
-    fun streamsEventsAndSendsBearerToken() {
+    fun streamsEventsAndSendsBearerAndIdempotencyHeaders() {
         val server = MockWebServer()
         server.enqueue(
             MockResponse()
@@ -33,7 +33,9 @@ class OkHttpChatRemoteDataSourceTest {
 
             val result = kotlinx.coroutines.runBlocking {
                 dataSource.streamReply(
-                    ChatStreamRequest("request-1", null, emptyList()),
+                    ChatStreamRequest("request-1", null, listOf(
+                        ai.zayron.client.ui.chat.ChatMessage("u1", "Hi", ai.zayron.client.ui.chat.ChatRole.USER)
+                    )),
                     events::add
                 )
             }
@@ -49,6 +51,7 @@ class OkHttpChatRemoteDataSourceTest {
             val recorded = server.takeRequest()
             assertEquals("Bearer test-session-token", recorded.getHeader("Authorization"))
             assertEquals("text/event-stream", recorded.getHeader("Accept"))
+            assertEquals("request-1", recorded.getHeader("Idempotency-Key"))
             assertEquals("request-1", org.json.JSONObject(recorded.body.readUtf8()).getString("requestId"))
         } finally {
             server.shutdown()
@@ -65,13 +68,40 @@ class OkHttpChatRemoteDataSourceTest {
                 client = OkHttpClient(),
                 endpointProvider = { server.url("/api/v1/chat/stream") }
             )
-
             val result = kotlinx.coroutines.runBlocking {
-                dataSource.streamReply(ChatStreamRequest("request-2", null, emptyList())) {}
+                dataSource.streamReply(ChatStreamRequest("request-2", null, listOf(
+                    ai.zayron.client.ui.chat.ChatMessage("u2", "Hi", ai.zayron.client.ui.chat.ChatRole.USER)
+                ))) {}
             }
-
             assertEquals(NetworkResult.AuthenticationRequired, result)
             assertEquals(0, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun rejectsDoneSentinelWithoutMessageCompletion() {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse().setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n")
+        )
+        server.start()
+        try {
+            val dataSource = OkHttpChatRemoteDataSource(
+                accessTokenProvider = ChatAccessTokenProvider { "token" },
+                client = OkHttpClient(),
+                endpointProvider = { server.url("/api/v1/chat/stream") }
+            )
+            val events = mutableListOf<ChatStreamEvent>()
+            val result = kotlinx.coroutines.runBlocking {
+                dataSource.streamReply(ChatStreamRequest("request-3", null, listOf(
+                    ai.zayron.client.ui.chat.ChatMessage("u3", "Hi", ai.zayron.client.ui.chat.ChatRole.USER)
+                )), events::add)
+            }
+            assertEquals(NetworkResult.StreamError("STREAM_ENDED_WITHOUT_COMPLETION"), result)
+            assertEquals(listOf(ChatStreamEvent.Done), events)
         } finally {
             server.shutdown()
         }
@@ -93,11 +123,11 @@ class OkHttpChatRemoteDataSourceTest {
                 client = OkHttpClient(),
                 endpointProvider = { server.url("/api/v1/chat/stream") }
             )
-
             val result = kotlinx.coroutines.runBlocking {
-                dataSource.streamReply(ChatStreamRequest("request-3", null, emptyList())) {}
+                dataSource.streamReply(ChatStreamRequest("request-4", null, listOf(
+                    ai.zayron.client.ui.chat.ChatMessage("u4", "Hi", ai.zayron.client.ui.chat.ChatRole.USER)
+                ))) {}
             }
-
             assertTrue(result is NetworkResult.HttpError)
             assertEquals(429, (result as NetworkResult.HttpError).statusCode)
         } finally {

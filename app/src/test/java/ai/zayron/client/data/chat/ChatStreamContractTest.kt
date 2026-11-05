@@ -45,8 +45,8 @@ class ChatStreamContractTest {
             ChatStreamEventParser.parse("error", """{"code":"SERVICE_UNAVAILABLE","debug":"private"}"""))
     }
 
-    @Test fun doneSentinelCompletes() {
-        assertEquals(ChatStreamEvent.Completed(null), ChatStreamEventParser.parse(null, "[DONE]"))
+    @Test fun doneSentinelIsNotCompletion() {
+        assertEquals(ChatStreamEvent.Done, ChatStreamEventParser.parse(null, "[DONE]"))
     }
 
     @Test fun ignoresMalformedAndUnknownEvents() {
