@@ -21,7 +21,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - GitHub Actions compiles checked-in repository source, runs JVM unit tests and uploads a debug APK.
 - Future successful APK artifacts are configured for 90-day retention.
 - Shared OkHttp transport with bounded timeouts, HTTPS-only URL resolution and off-main-thread request execution.
-- Typed network outcomes distinguish successful responses, HTTP errors, unconfigured backend, rejected destinations and connection failures.
+- Typed network outcomes distinguish successful responses, HTTP errors, authentication requirements, stream protocol errors, unconfigured backend, rejected destinations and connection failures.
 - Safe API error mapping converts documented server error codes and HTTP statuses into user-facing messages without exposing raw server response bodies.
 - Automated JVM unit tests cover safe API error mapping and chat history serialization compatibility; CI runs these tests before assembling the APK.
 - Authentication domain contract separates non-secret session profile data, stable failure categories and repository operations from the UI.
@@ -31,6 +31,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Sign-in screen: visual shell only; no account is created and no credentials are submitted.
 - Authentication repository: interface and typed domain models are prepared, but there is no concrete implementation, secure token store, login request or session restoration.
 - AI Chat: local-only message history and role-aware conversation presentation; no assistant response generation, streaming, cloud sync or server delivery.
+- Chat network transport: an OkHttp SSE adapter now exists behind the remote data-source interface. It requires an injected access-token provider and a deployed backend endpoint; it is not connected to the chat UI or called by the app. MockWebServer tests exercise event streaming, bearer-token attachment, missing-token rejection and HTTP error handling.
 - Image-to-Video: image selection and prompt entry only.
 - Inpaint & Eraser: image selection and instruction entry only; no mask editor or image transformation.
 - Document AI: file selection only; no parsing, retrieval, citations or document upload.
@@ -58,7 +59,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - The backend URL remains empty until a real Zayron backend is deployed. The client refuses non-HTTPS backend URLs.
 - Requests are restricted to the configured backend host, port and base path; absolute external destinations and path traversal are rejected.
 - Network calls run on the IO dispatcher and use bounded timeouts.
-- HTTP error responses are represented separately from transport failures. Response bodies should be parsed carefully and must not be exposed as raw user-facing error text.
+- HTTP error responses are represented separately from transport failures. Response bodies are parsed carefully and are not exposed as raw user-facing error text.
 - No body/header logging interceptor is installed. Never embed provider API keys or service credentials in the APK.
 - Authentication must be added only after the backend session contract is defined, using secure session storage and server-side authorization.
 - The chat preview is stored in app-private local preferences. It is not encrypted chat backup, account sync or a substitute for a secure backend.

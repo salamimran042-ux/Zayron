@@ -17,6 +17,12 @@ sealed class NetworkResult<out T> {
         val responseBody: String
     ) : NetworkResult<Nothing>()
 
+    data class StreamError(
+        val code: String?
+    ) : NetworkResult<Nothing>()
+
+    data object AuthenticationRequired : NetworkResult<Nothing>()
+
     data object NotConfigured : NetworkResult<Nothing>()
 
     data object RejectedRequest : NetworkResult<Nothing>()

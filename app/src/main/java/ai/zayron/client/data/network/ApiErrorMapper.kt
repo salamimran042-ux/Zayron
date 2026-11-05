@@ -4,14 +4,16 @@ import org.json.JSONObject
 
 /**
  * Converts transport outcomes into safe, user-facing messages.
- *
- * Server response bodies may contain implementation details. They are parsed
- * only for a documented machine-readable error code and are never displayed.
+ * Server response bodies are parsed only for documented machine-readable codes.
  */
 object ApiErrorMapper {
 
     fun userMessage(result: NetworkResult<*>): String? = when (result) {
         is NetworkResult.Success<*> -> null
+        NetworkResult.AuthenticationRequired ->
+            "Please sign in to use Zayron AI services."
+        is NetworkResult.StreamError ->
+            "Zayron could not complete the response. Please try again."
         NetworkResult.NotConfigured ->
             "Zayron services are not connected yet. Please try again later."
         NetworkResult.RejectedRequest ->
