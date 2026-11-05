@@ -2,10 +2,6 @@ package ai.zayron.client.data.chat
 
 import android.content.Context
 import ai.zayron.client.ui.chat.ChatMessage
-import ai.zayron.client.ui.chat.ChatRole
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.UUID
 
 /**
  * App-private, device-local chat history.
@@ -19,42 +15,19 @@ class LocalChatRepository(context: Context) : ChatRepository {
 
     override fun loadMessages(): List<ChatMessage> {
         val saved = preferences.getString(KEY_MESSAGES, null) ?: return emptyList()
+        val messages = ChatMessageCodec.decode(saved)
 
-        return try {
-            val encoded = JSONArray(saved)
-            buildList {
-                for (index in 0 until encoded.length()) {
-                    val item = encoded.optJSONObject(index) ?: continue
-                    val text = item.optString("text").trim()
-                    if (text.isEmpty()) continue
-
-                    add(
-                        ChatMessage(
-                            id = item.optString("id").ifBlank { UUID.randomUUID().toString() },
-                            text = text,
-                            role = ChatRole.USER
-                        )
-                    )
-                }
-            }
-        } catch (_: Exception) {
+        if (messages.isEmpty() && saved.isNotBlank()) {
             // Invalid local data must never prevent the chat workspace from opening.
             preferences.edit().remove(KEY_MESSAGES).apply()
-            emptyList()
         }
+        return messages
     }
 
     override fun saveMessages(messages: List<ChatMessage>) {
-        val encoded = JSONArray()
-        messages.forEach { message ->
-            encoded.put(
-                JSONObject()
-                    .put("id", message.id)
-                    .put("text", message.text)
-                    .put("role", message.role.name)
-            )
-        }
-        preferences.edit().putString(KEY_MESSAGES, encoded.toString()).apply()
+        preferences.edit()
+            .putString(KEY_MESSAGES, ChatMessageCodec.encode(messages))
+            .apply()
     }
 
     override fun clearMessages() {

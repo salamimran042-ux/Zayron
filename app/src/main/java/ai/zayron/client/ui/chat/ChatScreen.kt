@@ -112,15 +112,34 @@ fun ChatScreen(
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
                 items(messages, key = { it.id }) { message ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    val isUser = message.role == ChatRole.USER
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                    ) {
                         Column(
                             Modifier.widthIn(max = 320.dp).clip(
-                                RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 5.dp)
-                            ).background(ChatPurple).padding(horizontal = 15.dp, vertical = 11.dp)
+                                RoundedCornerShape(
+                                    topStart = 18.dp,
+                                    topEnd = 18.dp,
+                                    bottomStart = if (isUser) 18.dp else 5.dp,
+                                    bottomEnd = if (isUser) 5.dp else 18.dp
+                                )
+                            ).background(if (isUser) ChatPurple else MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(horizontal = 15.dp, vertical = 11.dp)
                         ) {
-                            Text(message.text, color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                message.text,
+                                color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
                             Spacer(Modifier.height(4.dp))
-                            Text("Saved on this device • not sent", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                if (isUser) "Saved on this device • not sent" else "Local assistant message",
+                                color = if (isUser) Color.White.copy(alpha = 0.75f)
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall
+                            )
                         }
                     }
                 }
