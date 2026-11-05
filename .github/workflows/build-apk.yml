@@ -44,6 +44,15 @@ jobs:
       - name: Run JVM unit tests
         run: gradle --no-daemon :app:testDebugUnitTest
 
+      - name: Run Android Keystore instrumentation tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: Pixel_2
+          script: gradle --no-daemon :app:connectedDebugAndroidTest
+
       - name: Build debug APK from repository source
         run: gradle --no-daemon :app:assembleDebug
 
