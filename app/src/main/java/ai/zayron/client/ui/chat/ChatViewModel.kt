@@ -1,27 +1,25 @@
 package ai.zayron.client.ui.chat
 
 import android.app.Application
-import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.AndroidViewModel
-import org.json.JSONArray
-import org.json.JSONObject
+import ai.zayron.client.data.chat.ChatRepository
+import ai.zayron.client.data.chat.LocalChatRepository
 import java.util.UUID
 
 /**
- * Stores the user's preview messages in app-private local storage.
- * This is device-local history only: it is not synced or sent to an AI service.
+ * Coordinates the chat preview UI with a replaceable persistence boundary.
+ * Current messages remain local-only until a real backend repository exists.
  */
-class ChatViewModel(application: Application) : AndroidViewModel(application) {
-    private val preferences = application.getSharedPreferences(
-        "zayron_local_chat",
-        Context.MODE_PRIVATE
-    )
+class ChatViewModel(
+    application: Application,
+    private val chatRepository: ChatRepository = LocalChatRepository(application)
+) : AndroidViewModel(application) {
 
     val messages = mutableStateListOf<ChatMessage>()
 
     init {
-        restoreConversation()
+        messages.addAll(chatRepository.loadMessages())
     }
 
     fun sendMessage(rawText: String) {
@@ -35,51 +33,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 role = ChatRole.USER
             )
         )
-        persistConversation()
+        chatRepository.saveMessages(messages.toList())
     }
 
     fun clearConversation() {
         messages.clear()
-        preferences.edit().remove(KEY_MESSAGES).apply()
-    }
-
-    private fun persistConversation() {
-        val encoded = JSONArray()
-        messages.forEach { message ->
-            encoded.put(
-                JSONObject()
-                    .put("id", message.id)
-                    .put("text", message.text)
-                    .put("role", message.role.name)
-            )
-        }
-        preferences.edit().putString(KEY_MESSAGES, encoded.toString()).apply()
-    }
-
-    private fun restoreConversation() {
-        val saved = preferences.getString(KEY_MESSAGES, null) ?: return
-        try {
-            val encoded = JSONArray(saved)
-            for (index in 0 until encoded.length()) {
-                val item = encoded.optJSONObject(index) ?: continue
-                val text = item.optString("text").trim()
-                if (text.isEmpty()) continue
-                messages.add(
-                    ChatMessage(
-                        id = item.optString("id").ifBlank { UUID.randomUUID().toString() },
-                        text = text,
-                        role = ChatRole.USER
-                    )
-                )
-            }
-        } catch (_: Exception) {
-            // Corrupt local history should never prevent the chat screen from opening.
-            preferences.edit().remove(KEY_MESSAGES).apply()
-            messages.clear()
-        }
-    }
-
-    private companion object {
-        const val KEY_MESSAGES = "messages_json"
+        chatRepository.clearMessages()
     }
 }

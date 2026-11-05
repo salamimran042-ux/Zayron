@@ -11,6 +11,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Light-first Material 3 application shell and unified workspace.
 - One workspace switcher for AI Chat, Image-to-Video, Image Editing, Document AI, App Builder and Voice Assistant.
 - Local chat message entry, display, clear confirmation and app-private persistence across app restarts.
+- Chat UI state is separated from the persistence contract through a repository interface.
 - Android system picker for selecting image and document files in the preparation screens.
 - Local prompt / app-brief entry fields.
 - Explicit UI notices where a remote service is not connected.
@@ -28,6 +29,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - App Builder: local app brief only; no code generation, preview, build worker or APK export.
 - Voice Assistant: interface only; no microphone capture, speech recognition or spoken AI response.
 - Network layer: shared transport and result handling are prepared, but no backend endpoint is called and no authentication/session interceptor exists.
+- Chat repository abstraction currently uses a local SharedPreferences implementation only; no remote repository is connected.
 
 ## Not yet implemented
 
