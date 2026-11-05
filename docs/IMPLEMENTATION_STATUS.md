@@ -15,6 +15,7 @@ This document separates what is present in the Android client from services that
 - Local prompt / app-brief entry fields.
 - Explicit UI notices where a remote service is not connected.
 - GitHub Actions compiles checked-in repository source and uploads a debug APK.
+- Shared OkHttp transport foundation with bounded timeouts and HTTPS-only backend URL resolution.
 
 ## Partial / preparation only
 
@@ -25,10 +26,12 @@ This document separates what is present in the Android client from services that
 - Document AI: file selection only; no parsing, retrieval, citations or document upload.
 - App Builder: local app brief only; no code generation, preview, build worker or APK export.
 - Voice Assistant: interface only; no microphone capture, speech recognition or spoken AI response.
+- Network layer: shared HTTP client is prepared, but no API calls, authentication interceptor, token storage or backend endpoint is active.
 
 ## Not yet implemented
 
-- Production backend, HTTPS API authentication and token refresh.
+- Production backend deployment and configured HTTPS API base URL.
+- HTTPS API authentication, secure session storage and token refresh.
 - User registration, sign-in, password reset and account management.
 - Credits, usage metering, subscriptions, billing and entitlement enforcement.
 - Secure file upload, storage, deletion and job status tracking.
@@ -39,8 +42,11 @@ This document separates what is present in the Android client from services that
 
 ## Security and release notes
 
+- The Android manifest includes the normal INTERNET permission for future backend communication. The permission alone does not initiate a network request.
+- The backend URL remains empty until a real Zayron backend is deployed. The client refuses non-HTTPS backend URLs.
 - Never embed provider API keys or service credentials in the Android APK.
+- The shared HTTP client has connection, read, write and overall call timeouts. It deliberately has no body/header logging interceptor.
+- Authentication must be added only after the backend session contract is defined; do not store production credentials in debug builds.
 - The chat preview is stored in app-private local preferences. It is not encrypted chat backup, account sync or a substitute for a secure backend.
-- Do not use production credentials in debug builds.
 - Debug APKs from separate GitHub-hosted runners may have different debug signing certificates. An update may therefore require a matching signing key or uninstalling the previous debug build (which can erase local app data).
 - Do not label a feature as AI-powered until the complete backend path has been integrated and tested.
