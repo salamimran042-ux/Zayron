@@ -40,3 +40,6 @@ On a successful run, download the `Zayron-AI-Debug-APK` artifact.
 ## Security
 
 Do not put provider API keys or private credentials in the Android application. Connect the client to a secured HTTPS backend only after the backend contract and deployment are ready.
+
+
+Latest engineering update: local chat history is now persisted in app-private storage, with an in-app clear confirmation. This change is awaiting its own CI build verification.
