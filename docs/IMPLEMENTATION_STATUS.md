@@ -19,10 +19,12 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Shared OkHttp transport with bounded timeouts, HTTPS-only URL resolution and off-main-thread request execution.
 - Typed network outcomes distinguish successful responses, HTTP errors, unconfigured backend, rejected destinations and connection failures.
 - Safe API error mapping converts documented server error codes and HTTP statuses into user-facing messages without exposing raw server response bodies.
+- Authentication domain contract separates non-secret session profile data, stable failure categories and repository operations from the UI.
 
 ## Partial / preparation only
 
 - Sign-in screen: visual shell only; no account is created and no credentials are submitted.
+- Authentication repository: interface and typed domain models are prepared, but there is no concrete implementation, secure token store, login request or session restoration.
 - AI Chat: local-only message history; no assistant response, streaming, cloud sync or server delivery.
 - Image-to-Video: image selection and prompt entry only.
 - Inpaint & Eraser: image selection and instruction entry only; no mask editor or image transformation.
@@ -36,6 +38,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 
 - Production backend deployment and configured HTTPS API base URL.
 - HTTPS API authentication, secure session storage and token refresh.
+- Backend-defined access/refresh token format, expiry, rotation, revocation and logout behavior.
 - User registration, sign-in, password reset and account management.
 - Credits, usage metering, subscriptions, billing and entitlement enforcement.
 - Secure file upload, storage, deletion and job status tracking.

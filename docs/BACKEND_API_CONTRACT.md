@@ -30,6 +30,10 @@ Base path: `/api/v1`
 | Jobs | `GET /jobs/{jobId}`, `POST /jobs/{jobId}/cancel` | User-scoped job status and cancellation |
 | Usage | `GET /usage` | Current balance and usage history |
 
+## Android authentication boundary
+
+The Android source currently contains only an authentication domain contract. It is not connected to an endpoint and has no concrete repository or session-store implementation. Before enabling sign-in, the deployed backend must specify credential transport, access-token expiry, refresh-token rotation, revocation, logout behavior, account status responses and recovery flows. The client must keep credentials transient, never log them, keep tokens out of UI models, and store any approved session material only through a reviewed secure-storage implementation. Do not infer these details from the proposed routes below.
+
 ## Common response conventions
 
 - JSON errors use stable machine-readable codes such as `AUTH_REQUIRED`, `INSUFFICIENT_CREDITS`, `FILE_TOO_LARGE`, `UNSUPPORTED_MEDIA`, `RATE_LIMITED` and `SERVICE_UNAVAILABLE`.
