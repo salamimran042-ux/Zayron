@@ -19,6 +19,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Shared OkHttp transport with bounded timeouts, HTTPS-only URL resolution and off-main-thread request execution.
 - Typed network outcomes distinguish successful responses, HTTP errors, unconfigured backend, rejected destinations and connection failures.
 - Safe API error mapping converts documented server error codes and HTTP statuses into user-facing messages without exposing raw server response bodies.
+- Automated JVM unit tests cover safe API error mapping, including malformed and unknown server responses; CI runs these tests before assembling the APK.
 - Authentication domain contract separates non-secret session profile data, stable failure categories and repository operations from the UI.
 
 ## Partial / preparation only

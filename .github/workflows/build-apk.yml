@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Android debug APK
+    name: Test and build Android debug APK
     runs-on: ubuntu-latest
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
@@ -40,6 +40,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: "8.4"
+
+      - name: Run JVM unit tests
+        run: gradle --no-daemon :app:testDebugUnitTest
 
       - name: Build debug APK from repository source
         run: gradle --no-daemon :app:assembleDebug
