@@ -14,7 +14,6 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.GeneralSecurityException
 import java.security.KeyStore
-import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -24,7 +23,7 @@ import javax.crypto.spec.GCMParameterSpec
  * Encrypted client-side credentials needed to restore and refresh a backend session.
  * These values must never be exposed to Compose state, logs, analytics or crash reports.
  */
-data class SessionTokens(
+class SessionTokens(
     val accessToken: String,
     val refreshToken: String,
     val accessExpiresAtEpochSeconds: Long
