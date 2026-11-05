@@ -19,14 +19,15 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Local prompt / app-brief entry fields.
 - Explicit UI notices where a remote service is not connected.
 - GitHub Actions compiles checked-in repository source, runs JVM unit tests and uploads a debug APK.
-- Future successful APK artifacts are configured for 90-day retention.
+- Successful APK artifacts are configured for 90-day retention.
 - Shared OkHttp transport with bounded timeouts, HTTPS-only URL resolution and off-main-thread request execution.
 - Typed network outcomes distinguish successful responses, HTTP errors, authentication requirements, stream protocol errors, unconfigured backend, rejected destinations and connection failures.
 - Safe API error mapping converts documented server error codes and HTTP statuses into user-facing messages without exposing raw server response bodies.
-- Automated JVM unit tests cover safe API error mapping and chat history serialization compatibility; CI runs these tests before assembling the APK.
+- Automated JVM unit tests cover safe API error mapping, chat history serialization compatibility, stream decoding and secure access-token expiry behavior.
 - Authentication domain contract separates non-secret session profile data, stable failure categories and repository operations from the UI.
-- Session credentials now have an Android Keystore AES-256-GCM encryption foundation, stored as ciphertext in app-private no-backup storage with no plaintext fallback.
-- A secure chat access-token provider reads the encrypted session and refuses to supply an expired access token. JVM tests cover its expiry gate and ensure token values are not exposed by the session object's default string representation.
+- Session credentials have an Android Keystore AES-256-GCM encryption foundation, stored as ciphertext in app-private no-backup storage with no plaintext fallback.
+- A secure chat access-token provider reads the encrypted session and refuses to supply an expired access token.
+- Android instrumentation tests have been added for Keystore-backed save/read round-trips, plaintext absence, ciphertext tamper rejection, cleanup and fresh-session recreation. CI now runs these tests on an API 34 Android emulator before building the APK; the first emulator test result is pending.
 
 ## Partial / preparation only
 
@@ -40,7 +41,6 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - App Builder: local app brief only; no code generation, preview, build worker or APK export.
 - Voice Assistant: interface only; no microphone capture, speech recognition or spoken AI response.
 - Network layer: shared transport, typed result handling, safe user-facing error mapping, a typed chat-stream contract, complete-frame SSE event parsing and incremental SSE frame decoding are prepared and covered by JVM tests. The secure token provider is not yet wired into a running backend session, and no automatic refresh-and-retry interceptor exists.
-- Chat repository abstraction currently uses a local SharedPreferences implementation only; no remote repository is connected.
 
 ## Not yet implemented
 
@@ -53,7 +53,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Provider integrations and server-side secrets management.
 - Server-side AI chat, image/video generation, inpainting, document RAG and app build workers.
 - Voice capture, speech-to-text and text-to-speech integration.
-- Automated Android UI tests, backend integration tests and release signing.
+- Backend integration tests and release signing.
 
 ## Security and release notes
 
@@ -63,7 +63,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Network calls run on the IO dispatcher and use bounded timeouts.
 - HTTP error responses are represented separately from transport failures. Response bodies are parsed carefully and are not exposed as raw user-facing error text.
 - No body/header logging interceptor is installed. Never embed provider API keys or service credentials in the APK.
-- The Android client now has a Keystore-backed encrypted session-storage foundation. This is not yet a complete authentication system: remote login, refresh coordination, logout/revocation, device-level Keystore tests and backend integration remain outstanding.
+- The Android client has a Keystore-backed encrypted session-storage foundation. Its device-side instrumentation suite is now wired into CI; the result must pass before treating the Android Keystore behavior as verified. Remote login, refresh coordination, logout/revocation and backend integration remain outstanding.
 - The chat preview is stored in app-private local preferences. It is not encrypted chat backup, account sync or a substitute for a secure backend.
 - Debug APKs from separate GitHub-hosted runners may have different debug signing certificates. An update may therefore require a matching signing key or uninstalling the previous debug build (which can erase local app data).
 - Do not label a feature as AI-powered until the complete backend path has been integrated and tested.
