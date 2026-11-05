@@ -94,6 +94,9 @@ class AndroidKeystoreSessionStore(context: Context) : SecureSessionStore {
     override fun read(): SessionTokens? {
         if (!sessionFile.isFile) return null
         return try {
+            require(sessionFile.length() in MIN_ENCRYPTED_FILE_LENGTH..MAX_ENCRYPTED_FILE_LENGTH) {
+                "Invalid encrypted session file size."
+            }
             val encrypted = FileInputStream(sessionFile).use { it.readBytes() }
             DataInputStream(ByteArrayInputStream(encrypted)).use { data ->
                 require(data.readInt() == FORMAT_VERSION) { "Unsupported session format." }
@@ -197,5 +200,7 @@ class AndroidKeystoreSessionStore(context: Context) : SecureSessionStore {
         const val GCM_TAG_BITS = 128
         const val MIN_CIPHERTEXT_LENGTH = 16
         const val MAX_CIPHERTEXT_LENGTH = 256 * 1024
+        const val MIN_ENCRYPTED_FILE_LENGTH = 24L
+        const val MAX_ENCRYPTED_FILE_LENGTH = MAX_CIPHERTEXT_LENGTH.toLong() + 24L
     }
 }

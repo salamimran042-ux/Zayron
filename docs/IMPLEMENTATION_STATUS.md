@@ -25,11 +25,13 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Safe API error mapping converts documented server error codes and HTTP statuses into user-facing messages without exposing raw server response bodies.
 - Automated JVM unit tests cover safe API error mapping and chat history serialization compatibility; CI runs these tests before assembling the APK.
 - Authentication domain contract separates non-secret session profile data, stable failure categories and repository operations from the UI.
+- Session credentials now have an Android Keystore AES-256-GCM encryption foundation, stored as ciphertext in app-private no-backup storage with no plaintext fallback.
+- A secure chat access-token provider reads the encrypted session and refuses to supply an expired access token. JVM tests cover its expiry gate and ensure token values are not exposed by the session object's default string representation.
 
 ## Partial / preparation only
 
 - Sign-in screen: visual shell only; no account is created and no credentials are submitted.
-- Authentication repository: interface and typed domain models are prepared, but there is no concrete implementation, secure token store, login request or session restoration.
+- Authentication repository: interface and typed domain models are prepared, and encrypted session storage is implemented as a client foundation. There is still no concrete remote login, refresh-token rotation, logout request or server-backed session restoration.
 - AI Chat: local-only message history and role-aware conversation presentation; no assistant response generation, streaming, cloud sync or server delivery.
 - Chat network transport: an OkHttp SSE adapter now exists behind the remote data-source interface. It requires an injected access-token provider and a deployed backend endpoint; it is not connected to the chat UI or called by the app. MockWebServer tests exercise event streaming, bearer-token attachment, missing-token rejection and HTTP error handling.
 - Image-to-Video: image selection and prompt entry only.
@@ -37,13 +39,13 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Document AI: file selection only; no parsing, retrieval, citations or document upload.
 - App Builder: local app brief only; no code generation, preview, build worker or APK export.
 - Voice Assistant: interface only; no microphone capture, speech recognition or spoken AI response.
-- Network layer: shared transport, typed result handling, safe user-facing error mapping, a typed chat-stream contract, complete-frame SSE event parsing and incremental SSE frame decoding are prepared and covered by JVM tests. No backend endpoint is called and no authentication/session interceptor exists.
+- Network layer: shared transport, typed result handling, safe user-facing error mapping, a typed chat-stream contract, complete-frame SSE event parsing and incremental SSE frame decoding are prepared and covered by JVM tests. The secure token provider is not yet wired into a running backend session, and no automatic refresh-and-retry interceptor exists.
 - Chat repository abstraction currently uses a local SharedPreferences implementation only; no remote repository is connected.
 
 ## Not yet implemented
 
 - Production backend deployment and configured HTTPS API base URL.
-- HTTPS API authentication, secure session storage and token refresh.
+- HTTPS API authentication, remote login, automatic token refresh and server-side session revocation.
 - Backend-defined access/refresh token format, expiry, rotation, revocation and logout behavior.
 - User registration, sign-in, password reset and account management.
 - Credits, usage metering, subscriptions, billing and entitlement enforcement.
@@ -61,7 +63,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Network calls run on the IO dispatcher and use bounded timeouts.
 - HTTP error responses are represented separately from transport failures. Response bodies are parsed carefully and are not exposed as raw user-facing error text.
 - No body/header logging interceptor is installed. Never embed provider API keys or service credentials in the APK.
-- Authentication must be added only after the backend session contract is defined, using secure session storage and server-side authorization.
+- The Android client now has a Keystore-backed encrypted session-storage foundation. This is not yet a complete authentication system: remote login, refresh coordination, logout/revocation, device-level Keystore tests and backend integration remain outstanding.
 - The chat preview is stored in app-private local preferences. It is not encrypted chat backup, account sync or a substitute for a secure backend.
 - Debug APKs from separate GitHub-hosted runners may have different debug signing certificates. An update may therefore require a matching signing key or uninstalling the previous debug build (which can erase local app data).
 - Do not label a feature as AI-powered until the complete backend path has been integrated and tested.
