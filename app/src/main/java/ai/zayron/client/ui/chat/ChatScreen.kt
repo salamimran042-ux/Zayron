@@ -39,7 +39,7 @@ fun ChatScreen(
 
     val sendDraft = {
         val message = draft.trim()
-        if (message.isNotEmpty()) {
+        if (message.isNotEmpty() && !chatViewModel.isSending) {
             chatViewModel.sendMessage(message)
             draft = ""
         }
@@ -87,6 +87,15 @@ fun ChatScreen(
                     Icon(Icons.Default.DeleteOutline, contentDescription = "Clear conversation")
                 }
             }
+        }
+
+        chatViewModel.serviceMessage?.let { notice ->
+            Text(
+                notice,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+            )
         }
 
         if (messages.isEmpty()) {
@@ -141,7 +150,13 @@ fun ChatScreen(
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                if (isUser) "Saved on this device • not sent" else "Local assistant message",
+                                when {
+                                    message.deliveryState == DeliveryState.SENT -> "Sent securely"
+                                    message.deliveryState == DeliveryState.PENDING -> "Sending…"
+                                    message.deliveryState == DeliveryState.FAILED -> "Not delivered"
+                                    isUser -> "Saved on this device • not sent"
+                                    else -> "Local assistant message"
+                                },
                                 color = if (isUser) Color.White.copy(alpha = 0.75f)
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.labelSmall
@@ -180,18 +195,26 @@ fun ChatScreen(
                 Spacer(Modifier.width(4.dp))
                 IconButton(
                     onClick = { sendDraft() },
-                    enabled = draft.isNotBlank(),
+                    enabled = draft.isNotBlank() && !chatViewModel.isSending,
                     modifier = Modifier.size(46.dp).clip(CircleShape).background(
                         if (draft.isNotBlank()) ChatPurple else ChatPurple.copy(alpha = 0.35f)
                     )
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Save message", tint = Color.White)
+                    if (chatViewModel.isSending) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send message", tint = Color.White)
+                    }
                 }
             }
         }
 
         Text(
-            "Local preview: messages are saved privately on this device. AI replies, cloud sync and secure delivery are not connected yet.",
+            "Your messages stay on this device unless a configured Zayron backend accepts them. Local-only messages are never uploaded as chat history.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
