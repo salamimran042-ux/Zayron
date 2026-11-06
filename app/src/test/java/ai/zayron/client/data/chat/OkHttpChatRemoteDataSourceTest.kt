@@ -2,6 +2,12 @@ package ai.zayron.client.data.chat
 
 import ai.zayron.client.data.network.NetworkResult
 import okhttp3.OkHttpClient
+import okhttp3.EventListener
+import okhttp3.mockwebserver.SocketPolicy
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
@@ -134,4 +140,120 @@ class OkHttpChatRemoteDataSourceTest {
             server.shutdown()
         }
     }
+
+    @Test
+    fun returnsUnauthorizedHttpStatusWithoutTreatingItAsStream() {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(401)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"code\":\"UNAUTHENTICATED\"}")
+        )
+        server.start()
+        try {
+            val dataSource = OkHttpChatRemoteDataSource(
+                accessTokenProvider = ChatAccessTokenProvider { "expired-token" },
+                client = OkHttpClient(),
+                endpointProvider = { server.url("/api/v1/chat/stream") }
+            )
+            val result = kotlinx.coroutines.runBlocking {
+                dataSource.streamReply(ChatStreamRequest("request-401", null, listOf(
+                    ai.zayron.client.ui.chat.ChatMessage("u401", "Hi", ai.zayron.client.ui.chat.ChatRole.USER)
+                ))) {}
+            }
+            assertTrue(result is NetworkResult.HttpError)
+            assertEquals(401, (result as NetworkResult.HttpError).statusCode)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun rejectsSuccessfulResponseWithUnexpectedContentType() {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"answer\":\"not an SSE stream\"}")
+        )
+        server.start()
+        try {
+            val dataSource = OkHttpChatRemoteDataSource(
+                accessTokenProvider = ChatAccessTokenProvider { "token" },
+                client = OkHttpClient(),
+                endpointProvider = { server.url("/api/v1/chat/stream") }
+            )
+            val result = kotlinx.coroutines.runBlocking {
+                dataSource.streamReply(ChatStreamRequest("request-content-type", null, listOf(
+                    ai.zayron.client.ui.chat.ChatMessage("uct", "Hi", ai.zayron.client.ui.chat.ChatRole.USER)
+                ))) {}
+            }
+            assertEquals(NetworkResult.StreamError("UNEXPECTED_CONTENT_TYPE"), result)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun coroutineCancellationCancelsTheUnderlyingOkHttpCall() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        server.start()
+        val callFailed = CountDownLatch(1)
+        try {
+            val client = OkHttpClient.Builder()
+                .eventListener(object : EventListener() {
+                    override fun callFailed(call: okhttp3.Call, ioe: java.io.IOException) {
+                        if (ioe.message?.contains("Canceled", ignoreCase = true) == true) {
+                            callFailed.countDown()
+                        }
+                    }
+                })
+                .build()
+            val dataSource = OkHttpChatRemoteDataSource(
+                accessTokenProvider = ChatAccessTokenProvider { "token" },
+                client = client,
+                endpointProvider = { server.url("/api/v1/chat/stream") }
+            )
+
+            kotlinx.coroutines.runBlocking {
+                val requestJob = launch {
+                    dataSource.streamReply(ChatStreamRequest("request-cancel", null, listOf(
+                        ai.zayron.client.ui.chat.ChatMessage("uc", "Stop this", ai.zayron.client.ui.chat.ChatRole.USER)
+                    ))) {}
+                }
+                assertTrue(server.takeRequest(5, TimeUnit.SECONDS) != null)
+                requestJob.cancelAndJoin()
+            }
+
+            assertTrue("Expected OkHttp to report cancellation of its network call",
+                callFailed.await(5, TimeUnit.SECONDS))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun interruptedConnectionReturnsConnectionError() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
+        server.start()
+        try {
+            val dataSource = OkHttpChatRemoteDataSource(
+                accessTokenProvider = ChatAccessTokenProvider { "token" },
+                client = OkHttpClient(),
+                endpointProvider = { server.url("/api/v1/chat/stream") }
+            )
+            val result = kotlinx.coroutines.runBlocking {
+                dataSource.streamReply(ChatStreamRequest("request-disconnect", null, listOf(
+                    ai.zayron.client.ui.chat.ChatMessage("ud", "Hi", ai.zayron.client.ui.chat.ChatRole.USER)
+                ))) {}
+            }
+            assertEquals(NetworkResult.ConnectionError, result)
+        } finally {
+            server.shutdown()
+        }
+    }
+
 }
