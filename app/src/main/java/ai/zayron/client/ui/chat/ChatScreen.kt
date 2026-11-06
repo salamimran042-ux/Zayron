@@ -194,17 +194,19 @@ fun ChatScreen(
                 )
                 Spacer(Modifier.width(4.dp))
                 IconButton(
-                    onClick = { sendDraft() },
-                    enabled = draft.isNotBlank() && !chatViewModel.isSending,
+                    onClick = {
+                        if (chatViewModel.isSending) chatViewModel.cancelCurrentRequest() else sendDraft()
+                    },
+                    enabled = chatViewModel.isSending || draft.isNotBlank(),
                     modifier = Modifier.size(46.dp).clip(CircleShape).background(
-                        if (draft.isNotBlank()) ChatPurple else ChatPurple.copy(alpha = 0.35f)
+                        if (chatViewModel.isSending || draft.isNotBlank()) ChatPurple else ChatPurple.copy(alpha = 0.35f)
                     )
                 ) {
                     if (chatViewModel.isSending) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Stop generation",
+                            tint = Color.White
                         )
                     } else {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send message", tint = Color.White)
