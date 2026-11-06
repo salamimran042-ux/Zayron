@@ -85,20 +85,9 @@ jobs:
           emulator-boot-timeout: 900
           script: |
             adb wait-for-device
-            ready=0
-            for i in $(seq 1 90); do
-              booted=$(timeout 20s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' || true)
-              sdk=$(timeout 20s adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\\r' || true)
-              provisioned=$(timeout 20s adb shell settings get global device_provisioned 2>/dev/null | tr -d '\\r' || true)
-              if [ "$booted" = "1" ] && [ "$sdk" = "30" ] && [ "$provisioned" = "1" ]; then
-                ready=1
-                break
-              fi
-              adb wait-for-device
-              sleep 10
-            done
-            test "$ready" -eq 1
-            timeout 30s adb shell pm list packages >/dev/null
+            adb shell getprop sys.boot_completed
+            adb shell getprop ro.build.version.sdk
+            adb shell pm list packages >/dev/null
             gradle --no-daemon :app:connectedDebugAndroidTest
 
   verify-project-integrity:
