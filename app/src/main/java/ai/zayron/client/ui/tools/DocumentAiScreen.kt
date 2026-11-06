@@ -36,14 +36,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.File
+import java.io.FileOutputStream
+import java.io.Writer
 import java.util.Locale
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
 
 private const val MAX_PREVIEW_CHARS = 12_000
 
 /**
  * Local document preparation only. Plain-text files can be previewed on-device.
- * Plain-text and DOCX text previews are extracted locally. PDF text extraction,
- * indexing, citations, uploads and AI answers require later implementation/backend work.
+ * Plain-text, DOCX and selectable PDF text previews are extracted locally.
+ * OCR, indexing, citations, uploads and AI answers require later implementation/backend work.
  */
 @Composable
 fun DocumentAiScreen(modifier: Modifier = Modifier) {
@@ -176,7 +182,7 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
             )
         ) {
             Text(
-                "Privacy and capability: selected files are read locally only. Plain-text and DOCX previews are available now. PDF text extraction is not implemented yet. AI questions, citations, indexing and cloud upload are not connected.",
+                "Privacy and capability: selected files are read locally only. Plain-text, DOCX and selectable PDF text previews are available. PDF processing is limited to 25 MB, 30 pages and 12,000 preview characters. Scanned-PDF OCR, AI questions, citations, indexing and cloud upload are not connected.",
                 modifier = Modifier.padding(14.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -233,17 +239,34 @@ private fun inspectDocument(context: Context, uri: Uri): DocumentInspection {
         }
     }
 
+    val isPdf = mime == "application/pdf" || name.endsWith(".pdf", ignoreCase = true)
+    if (isPdf) {
+        return try {
+            val extraction = extractPdfText(context, uri)
+            val message = when {
+                extraction.text.isBlank() ->
+                    "PDF opened locally, but no selectable text was found. Scanned/image-only PDFs need OCR, which is not connected yet."
+                extraction.pageLimitReached ->
+                    "PDF text extracted locally. Processing was limited to the first $MAX_PDF_PAGES pages."
+                extraction.truncated ->
+                    "PDF text extracted locally. Preview limited to the first $MAX_PREVIEW_CHARS characters."
+                else -> "PDF text extracted locally. No upload was performed."
+            }
+            DocumentInspection(name, mime, size, extraction.text, message)
+        } catch (error: Exception) {
+            DocumentInspection(name, mime, size, "",
+                "The PDF could not be read safely. It may be password-protected, damaged, or larger than the supported limit.")
+        }
+    }
+
     if (!isText) {
-        val message = when {
-            mime == "application/pdf" || name.endsWith(".pdf", ignoreCase = true) ->
-                "PDF selected. File details are available; PDF text extraction is a future milestone."
-            name.endsWith(".docx", ignoreCase = true) ->
-                "DOCX selected. File details are available; Word text extraction is a future milestone."
-            else -> "File selected. Local text preview is currently available for plain-text formats."
+        val message = if (name.endsWith(".docx", ignoreCase = true)) {
+            "DOCX selected. File details are available; Word text extraction is a future milestone."
+        } else {
+            "File selected. Local text preview is currently available for plain-text formats."
         }
         return DocumentInspection(name, mime, size, "", message)
     }
-
     return try {
         val output = StringBuilder()
         var truncated = false
@@ -277,6 +300,57 @@ private fun inspectDocument(context: Context, uri: Uri): DocumentInspection {
     }
 }
 
+private const val MAX_PDF_FILE_BYTES = 25L * 1024L * 1024L
+private const val MAX_PDF_PAGES = 30
+
+private data class PdfExtraction(val text: String, val truncated: Boolean, val pageLimitReached: Boolean)
+
+private class LimitedTextWriter(private val maxChars: Int) : Writer() {
+    val content = StringBuilder()
+    var truncated: Boolean = false
+        private set
+    override fun write(buffer: CharArray, offset: Int, length: Int) {
+        val available = maxChars - content.length
+        val accepted = minOf(length, available.coerceAtLeast(0))
+        if (accepted > 0) content.append(buffer, offset, accepted)
+        if (length > accepted) truncated = true
+    }
+    override fun flush() = Unit
+    override fun close() = Unit
+}
+
+private fun extractPdfText(context: Context, uri: Uri): PdfExtraction {
+    val tempPdf = File.createTempFile("zayron-document-", ".pdf", context.cacheDir)
+    try {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            FileOutputStream(tempPdf).use { output ->
+                val buffer = ByteArray(8192)
+                var total = 0L
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    require(total <= MAX_PDF_FILE_BYTES) { "PDF exceeds supported size" }
+                    output.write(buffer, 0, count)
+                }
+            }
+        } ?: throw IllegalStateException("The PDF could not be opened.")
+        PDFBoxResourceLoader.init(context.applicationContext)
+        PDDocument.load(tempPdf).use { document ->
+            val pageCount = document.numberOfPages
+            val writer = LimitedTextWriter(MAX_PREVIEW_CHARS)
+            if (pageCount > 0) {
+                val stripper = PDFTextStripper()
+                stripper.setStartPage(1)
+                stripper.setEndPage(minOf(pageCount, MAX_PDF_PAGES))
+                stripper.writeText(document, writer)
+            }
+            return PdfExtraction(writer.content.toString().trim(), writer.truncated, pageCount > MAX_PDF_PAGES)
+        }
+    } finally {
+        tempPdf.delete()
+    }
+}
 private fun formatFileSize(bytes: Long?): String {
     if (bytes == null || bytes < 0L) return "Unknown"
     return when {
