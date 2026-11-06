@@ -44,6 +44,9 @@ class ApiUrlPolicyTest {
             "./admin",
             "https://attacker.example/path",
             "//attacker.example/path",
+            "///attacker.example/path",
+            "%2e%2e/admin",
+            "api/%2E%2E/admin",
             "api/chat?debug=true",
             "api/chat#fragment",
             "api\\\\chat"
