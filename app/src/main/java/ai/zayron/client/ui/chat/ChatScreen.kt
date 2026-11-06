@@ -12,7 +12,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -149,7 +149,7 @@ fun ChatScreen(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(26.dp),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 1.dp
         ) {
             Row(
@@ -185,7 +185,7 @@ fun ChatScreen(
                         if (draft.isNotBlank()) ChatPurple else ChatPurple.copy(alpha = 0.35f)
                     )
                 ) {
-                    Icon(Icons.Default.Send, contentDescription = "Save message", tint = Color.White)
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Save message", tint = Color.White)
                 }
             }
         }
