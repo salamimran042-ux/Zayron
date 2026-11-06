@@ -1,6 +1,5 @@
 package ai.zayron.client.ui.tools
 
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -54,17 +53,12 @@ fun ToolWorkspaceScreen(
 ) {
     // Keep each tool's draft and selected file isolated when the user switches modes.
     var selectedImage by remember(mode) { mutableStateOf<Uri?>(null) }
-    var selectedDocument by remember(mode) { mutableStateOf<Uri?>(null) }
     var prompt by remember(mode) { mutableStateOf("") }
     var appBrief by remember(mode) { mutableStateOf("") }
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri -> selectedImage = uri }
-
-    val documentPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri -> selectedDocument = uri }
 
     Column(
         modifier = modifier.fillMaxSize().padding(18.dp),
@@ -102,24 +96,7 @@ fun ToolWorkspaceScreen(
 
             "Image Editing" -> ImageEditingScreen(Modifier.fillMaxSize())
 
-            "Document AI" -> {
-                ToolHeading(
-                    icon = { Icon(Icons.Default.Description, null, tint = ToolPurple) },
-                    title = "Document AI",
-                    subtitle = "Select a document to prepare for secure analysis."
-                )
-                SelectionCard(
-                    title = if (selectedDocument == null) "No document selected" else "Document selected",
-                    detail = "Choose a PDF, text document or another supported file from your phone.",
-                    buttonText = "Choose document",
-                    onClear = { selectedDocument = null },
-                    onClick = { documentPicker.launch(arrayOf("application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) }
-                )
-                ServiceNotice("Document reading, question answering, citations and private indexing require the document backend. The selected file is not uploaded.")
-                Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-                    Text("Document analysis not connected")
-                }
-            }
+            "Document AI" -> DocumentAiScreen(Modifier.fillMaxSize())
 
             "App Builder" -> {
                 ToolHeading(
