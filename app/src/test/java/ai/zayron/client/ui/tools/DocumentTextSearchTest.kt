@@ -1,11 +1,39 @@
 package ai.zayron.client.ui.tools
 
+import java.io.ByteArrayInputStream
+import java.io.IOException
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DocumentTextSearchTest {
+
+    @Test
+    fun boundedArchiveStreamAllowsInputAtTheExactLimit() {
+        val expected = byteArrayOf(1, 2, 3)
+        val stream = ArchiveByteLimitInputStream(ByteArrayInputStream(expected), 3)
+
+        assertArrayEquals(expected, stream.readBytes())
+    }
+
+    @Test
+    fun boundedArchiveStreamRejectsInputBeyondTheLimit() {
+        val stream = ArchiveByteLimitInputStream(ByteArrayInputStream(byteArrayOf(1, 2, 3, 4)), 3)
+
+        try {
+            stream.readBytes()
+            throw AssertionError("Expected the archive input limit to be enforced")
+        } catch (_: IOException) {
+            // Expected: the stream refuses the first byte beyond its configured limit.
+        }
+    }
+
+    @Test
+    fun emptyDocumentTextReturnsNoMatches() {
+        assertEquals(DocumentSearchResult(0, emptyList()), findDocumentMatches("", "word"))
+    }
 
     @Test
     fun emptyOrWhitespaceQueryReturnsNoMatches() {
