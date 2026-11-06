@@ -166,31 +166,7 @@ fun ToolWorkspaceScreen(
                 }
             }
 
-            "Voice Assistant" -> {
-                ToolHeading(
-                    icon = { Icon(Icons.Default.Mic, null, tint = ToolPurple) },
-                    title = "Voice Assistant",
-                    subtitle = "A voice-first interface for hands-free interaction."
-                )
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(Icons.Default.Mic, null, tint = ToolPurple)
-                        Text("Voice workspace", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "Microphone capture, speech recognition, spoken AI replies and conversation controls will be integrated here.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                ServiceNotice("Voice recognition and AI response services are not connected. The app is not listening.")
-                Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-                    Text("Voice service not connected")
-                }
-            }
+            "Voice Assistant" -> VoiceAssistantScreen(Modifier.fillMaxSize())
 
             else -> {
                 ToolHeading(
