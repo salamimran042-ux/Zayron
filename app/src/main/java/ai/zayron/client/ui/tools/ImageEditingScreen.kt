@@ -124,7 +124,7 @@ fun ImageEditingScreen(modifier: Modifier = Modifier) {
                 if (bitmap != null) {
                     drawImage(bitmap, dstSize = IntSize(size.width.toInt(), size.height.toInt()))
                 } else {
-                    drawRect(MaterialTheme.colorScheme.surfaceVariant)
+                    drawRect(Color(0xFFF1F0F7))
                 }
 
                 fun drawMask(points: List<Offset>) {
