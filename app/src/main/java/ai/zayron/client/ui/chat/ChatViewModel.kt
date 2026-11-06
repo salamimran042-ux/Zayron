@@ -172,6 +172,12 @@ class ChatViewModel(
         }
     }
 
+    fun cancelCurrentRequest() {
+        if (!isSending) return
+        _serviceMessage.value = "Generation stopped. The unfinished message remains saved on this device."
+        sendJob?.cancel()
+    }
+
     fun clearConversation() {
         sendJob?.cancel()
         sendJob = null
