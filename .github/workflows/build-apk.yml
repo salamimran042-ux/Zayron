@@ -90,7 +90,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           script: |
-            set -euo pipefail
+            set -eu
             adb wait-for-device
             echo "Waiting for Android to finish booting..."
             for attempt in $(seq 1 90); do
