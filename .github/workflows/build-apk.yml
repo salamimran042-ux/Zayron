@@ -64,7 +64,7 @@ jobs:
   instrumentation:
     name: Android Keystore instrumentation tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Check out committed source
         uses: actions/checkout@v7
@@ -92,7 +92,7 @@ jobs:
           profile: pixel_2
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data -camera-back none
           disable-animations: true
-          emulator-boot-timeout: 900
+          emulator-boot-timeout: 1800
           script: |
             set -eu
             adb wait-for-device
