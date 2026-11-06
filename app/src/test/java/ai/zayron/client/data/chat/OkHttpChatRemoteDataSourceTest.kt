@@ -4,6 +4,7 @@ import ai.zayron.client.data.network.NetworkResult
 import okhttp3.OkHttpClient
 import okhttp3.Call
 import okhttp3.mockwebserver.SocketPolicy
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicReference
@@ -214,7 +215,7 @@ class OkHttpChatRemoteDataSourceTest {
             )
 
             kotlinx.coroutines.runBlocking {
-                val requestJob = launch {
+                val requestJob = launch(Dispatchers.IO) {
                     dataSource.streamReply(ChatStreamRequest("request-cancel", null, listOf(
                         ai.zayron.client.ui.chat.ChatMessage("uc", "Stop this", ai.zayron.client.ui.chat.ChatRole.USER)
                     ))) {}
