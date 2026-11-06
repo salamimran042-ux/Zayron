@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# Keep only the newest run for each branch; avoid a backlog of obsolete emulator jobs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: JVM tests and Android debug APK
@@ -57,7 +62,8 @@ jobs:
 
   instrumentation:
     name: Android Keystore instrumentation tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
     steps:
       - name: Check out committed source
         uses: actions/checkout@v7
@@ -84,10 +90,24 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           script: |
+            set -euo pipefail
             adb wait-for-device
-            adb shell getprop sys.boot_completed
+            echo "Waiting for Android to finish booting..."
+            for attempt in $(seq 1 90); do
+              boot_completed="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+              if [ "$boot_completed" = "1" ]; then
+                break
+              fi
+              sleep 5
+            done
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" != "1" ]; then
+              echo "Emulator did not complete boot within 7.5 minutes."
+              adb devices -l || true
+              exit 1
+            fi
             adb shell getprop ro.build.version.sdk
             adb shell pm list packages >/dev/null
+            adb devices -l
             gradle --no-daemon :app:connectedDebugAndroidTest
 
   verify-project-integrity:
