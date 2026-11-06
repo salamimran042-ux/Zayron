@@ -18,7 +18,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Android system picker for selecting image and document files in the preparation screens.
 - Local prompt / app-brief entry fields.
 - Explicit UI notices where a remote service is not connected.
-- GitHub Actions compiles checked-in repository source, runs JVM unit tests and uploads a debug APK.
+- GitHub Actions compiles checked-in repository source, runs JVM unit tests, builds a debug APK and uploads the artifact.
 - Successful APK artifacts are configured for 90-day retention.
 - Shared OkHttp transport with bounded timeouts, HTTPS-only URL resolution and off-main-thread request execution.
 - Typed network outcomes distinguish successful responses, HTTP errors, authentication requirements, stream protocol errors, unconfigured backend, rejected destinations and connection failures.
@@ -27,8 +27,9 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Authentication domain contract separates non-secret session profile data, stable failure categories and repository operations from the UI.
 - Session credentials have an Android Keystore AES-256-GCM encryption foundation, stored as ciphertext in app-private no-backup storage with no plaintext fallback.
 - A secure chat access-token provider reads the encrypted session and refuses to supply an expired access token.
-- Android instrumentation tests cover Keystore-backed save/read round-trips, plaintext absence, ciphertext tamper rejection, cleanup and fresh-session recreation; the CI instrumentation job passed in workflow run #33.
-- Backend URL and relative API-path policy is isolated into testable helpers; new JVM tests cover HTTPS-only configuration, base-path resolution and rejection of traversal, absolute, query, fragment and backslash paths.
+- Android instrumentation tests cover Keystore-backed save/read round-trips, plaintext absence, ciphertext tamper rejection, cleanup and fresh-session recreation. The instrumentation job passed in workflow runs #33, #35 and #36; the #36 log records four tests started and a successful Gradle test task.
+- Backend URL and relative API-path policy is isolated into testable helpers; JVM tests cover HTTPS-only configuration, base-path resolution and rejection of network-path references, encoded traversal examples, absolute, query, fragment and backslash paths.
+- The latest two security-correction workflows, #35 and #36, both completed successfully on the implementation branch. Run #36 also built and uploaded the debug APK.
 
 ## Partial / preparation only
 
@@ -64,7 +65,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Network calls run on the IO dispatcher and use bounded timeouts.
 - HTTP error responses are represented separately from transport failures. Response bodies are parsed carefully and are not exposed as raw user-facing error text.
 - No body/header logging interceptor is installed. Never embed provider API keys or service credentials in the APK.
-- The Android client has a Keystore-backed encrypted session-storage foundation. Its device-side instrumentation suite passed in CI workflow run #33; remote login, refresh coordination, logout/revocation and backend integration remain outstanding.
+- The Android client has a Keystore-backed encrypted session-storage foundation. Its device-side instrumentation suite passed in CI workflow runs #33, #35 and #36; remote login, refresh coordination, logout/revocation and backend integration remain outstanding.
 - The chat preview is stored in app-private local preferences. It is not encrypted chat backup, account sync or a substitute for a secure backend.
 - Debug APKs from separate GitHub-hosted runners may have different debug signing certificates. An update may therefore require a matching signing key or uninstalling the previous debug build (which can erase local app data).
 - Do not label a feature as AI-powered until the complete backend path has been integrated and tested.
