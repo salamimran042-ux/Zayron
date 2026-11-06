@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Test and build Android debug APK
+    name: JVM tests and Android debug APK
     runs-on: ubuntu-latest
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
@@ -44,15 +44,6 @@ jobs:
       - name: Run JVM unit tests
         run: gradle --no-daemon :app:testDebugUnitTest
 
-      - name: Run Android Keystore instrumentation tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          script: gradle --no-daemon :app:connectedDebugAndroidTest
-
       - name: Build debug APK from repository source
         run: gradle --no-daemon :app:assembleDebug
 
@@ -63,3 +54,28 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 90
+
+  instrumentation:
+    name: Android Keystore instrumentation tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out committed source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Run Android Keystore tests on lightweight emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: gradle --no-daemon :app:connectedDebugAndroidTest
