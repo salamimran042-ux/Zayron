@@ -10,6 +10,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -31,8 +33,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = lightColorScheme(primary = ZayronPurple, background = Color(0xFFFAFAFD))) {
-                ZayronRoot()
+            var darkTheme by rememberSaveable { mutableStateOf(false) }
+            val colors = if (darkTheme) {
+                darkColorScheme(primary = Color(0xFFB8B0FF))
+            } else {
+                lightColorScheme(primary = ZayronPurple, background = Color(0xFFFAFAFD))
+            }
+            MaterialTheme(colorScheme = colors) {
+                ZayronRoot(darkTheme = darkTheme, onToggleTheme = { darkTheme = !darkTheme })
             }
         }
     }
@@ -46,16 +54,16 @@ private fun ZayronLogo(size: Int = 56) {
 }
 
 @Composable
-private fun ZayronRoot() {
+private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
     var preview by rememberSaveable { mutableStateOf(false) }
-    if (preview) Workspace() else SignIn(onPreview = { preview = true })
+    if (preview) Workspace(darkTheme = darkTheme, onToggleTheme = onToggleTheme) else SignIn(onPreview = { preview = true })
 }
 
 @Composable
 private fun SignIn(onPreview: () -> Unit) {
     var email by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    Surface(Modifier.fillMaxSize(), color = Color.White) {
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             Modifier.fillMaxSize().padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -88,7 +96,7 @@ private fun SignIn(onPreview: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Workspace() {
+private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
     var mode by rememberSaveable { mutableStateOf("AI Chat") }
     var menu by remember { mutableStateOf(false) }
 
@@ -106,6 +114,12 @@ private fun Workspace() {
                     }
                 },
                 actions = {
+                    IconButton(onClick = onToggleTheme) {
+                        Icon(
+                            imageVector = if (darkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            contentDescription = if (darkTheme) "Switch to light theme" else "Switch to dark theme"
+                        )
+                    }
                     Box {
                         OutlinedButton(onClick = { menu = true }, modifier = Modifier.padding(end = 8.dp)) {
                             Text(mode, maxLines = 1); Icon(Icons.Default.ArrowDropDown, "Select mode")
@@ -117,10 +131,10 @@ private fun Workspace() {
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         },
-        containerColor = Color(0xFFFAFAFD)
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             if (mode == "AI Chat") {
