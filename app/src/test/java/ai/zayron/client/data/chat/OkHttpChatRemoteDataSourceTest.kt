@@ -2,13 +2,10 @@ package ai.zayron.client.data.chat
 
 import ai.zayron.client.data.network.NetworkResult
 import okhttp3.OkHttpClient
-import okhttp3.EventListener
+import okhttp3.Call
 import okhttp3.mockwebserver.SocketPolicy
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -202,27 +199,17 @@ class OkHttpChatRemoteDataSourceTest {
         val server = MockWebServer()
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
         server.start()
-        val observedCall = AtomicReference<okhttp3.Call?>()
-        val callStarted = CountDownLatch(1)
-        val callFailed = CountDownLatch(1)
-        val cancelledAtFailure = AtomicBoolean(false)
+        val observedCall = AtomicReference<Call?>()
         try {
-            val client = OkHttpClient.Builder()
-                .eventListener(object : EventListener() {
-                    override fun callStart(call: okhttp3.Call) {
-                        observedCall.set(call)
-                        callStarted.countDown()
-                    }
-
-                    override fun callFailed(call: okhttp3.Call, ioe: java.io.IOException) {
-                        cancelledAtFailure.set(call.isCanceled())
-                        callFailed.countDown()
-                    }
-                })
-                .build()
+            val client = OkHttpClient()
+            // Capture the exact Call at creation time rather than depending on EventListener timing.
+            val callFactory = Call.Factory { request ->
+                client.newCall(request).also { observedCall.set(it) }
+            }
             val dataSource = OkHttpChatRemoteDataSource(
                 accessTokenProvider = ChatAccessTokenProvider { "token" },
                 client = client,
+                callFactory = callFactory,
                 endpointProvider = { server.url("/api/v1/chat/stream") }
             )
 
@@ -232,18 +219,18 @@ class OkHttpChatRemoteDataSourceTest {
                         ai.zayron.client.ui.chat.ChatMessage("uc", "Stop this", ai.zayron.client.ui.chat.ChatRole.USER)
                     ))) {}
                 }
-                assertTrue("OkHttp call should start", callStarted.await(5, TimeUnit.SECONDS))
-                assertTrue("Mock server should receive the request",
-                    server.takeRequest(5, TimeUnit.SECONDS) != null)
+                assertTrue(
+                    "Mock server should receive the request",
+                    server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS) != null
+                )
+                assertTrue("The OkHttp call should have been created", observedCall.get() != null)
                 requestJob.cancelAndJoin()
             }
 
-            assertTrue("OkHttp should report the cancelled call failure",
-                callFailed.await(5, TimeUnit.SECONDS))
-            assertTrue("The exact OkHttp call captured at callStart must be cancelled",
-                observedCall.get() === observedCall.get()?.takeIf { it.isCanceled() })
-            assertTrue("OkHttp must report the call as cancelled in callFailed",
-                cancelledAtFailure.get())
+            assertTrue(
+                "Coroutine cancellation must cancel the exact OkHttp call created for this request",
+                observedCall.get()?.isCanceled() == true
+            )
         } finally {
             server.shutdown()
         }
