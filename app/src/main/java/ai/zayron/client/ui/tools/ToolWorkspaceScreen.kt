@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,6 +81,7 @@ fun ToolWorkspaceScreen(
                     title = if (selectedImage == null) "No source image selected" else "Source image selected",
                     detail = "Choose an image from your phone. It stays on this device until a service is connected.",
                     buttonText = "Choose image",
+                    onClear = { selectedImage = null },
                     onClick = { imagePicker.launch("image/*") }
                 )
                 OutlinedTextField(
@@ -108,6 +110,7 @@ fun ToolWorkspaceScreen(
                     title = if (selectedImage == null) "No photo selected" else "Photo selected",
                     detail = "The photo is selected locally. Mask painting and AI processing will be added with the editing engine.",
                     buttonText = "Choose photo",
+                    onClear = { selectedImage = null },
                     onClick = { imagePicker.launch("image/*") }
                 )
                 OutlinedTextField(
@@ -134,6 +137,7 @@ fun ToolWorkspaceScreen(
                     title = if (selectedDocument == null) "No document selected" else "Document selected",
                     detail = "Choose a PDF, text document or another supported file from your phone.",
                     buttonText = "Choose document",
+                    onClear = { selectedDocument = null },
                     onClick = { documentPicker.launch(arrayOf("application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) }
                 )
                 ServiceNotice("Document reading, question answering, citations and private indexing require the document backend. The selected file is not uploaded.")
@@ -222,6 +226,7 @@ private fun SelectionCard(
     title: String,
     detail: String,
     buttonText: String,
+    onClear: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     Card(
@@ -232,8 +237,15 @@ private fun SelectionCard(
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = onClick) {
-                Text(buttonText)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onClick) {
+                    Text(buttonText)
+                }
+                if (onClear != null) {
+                    TextButton(onClick = onClear) {
+                        Text("Remove")
+                    }
+                }
             }
         }
     }
