@@ -26,6 +26,7 @@ fun interface ChatAccessTokenProvider {
 class OkHttpChatRemoteDataSource(
     private val accessTokenProvider: ChatAccessTokenProvider?,
     private val client: OkHttpClient = ApiClient.httpClient,
+    private val callFactory: okhttp3.Call.Factory = client,
     private val endpointProvider: () -> HttpUrl? = {
         ApiClient.urlFor("api/v1/chat/stream")
     }
@@ -52,7 +53,7 @@ class OkHttpChatRemoteDataSource(
             .build()
 
         return suspendCancellableCoroutine { continuation ->
-            val call = client.newCall(httpRequest)
+            val call = callFactory.newCall(httpRequest)
             continuation.invokeOnCancellation { call.cancel() }
 
             call.enqueue(object : Callback {
