@@ -59,6 +59,7 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
     var selectedMime by remember { mutableStateOf<String?>(null) }
     var selectedSize by remember { mutableStateOf<Long?>(null) }
     var preview by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Choose a document to inspect it on this device.") }
     var loading by remember { mutableStateOf(false) }
 
@@ -68,6 +69,7 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
         if (uri != null) {
             loading = true
             preview = ""
+            searchQuery = ""
             status = "Reading document details…"
             scope.launch {
                 val result = withContext(Dispatchers.IO) {
@@ -147,6 +149,7 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
                             selectedMime = null
                             selectedSize = null
                             preview = ""
+                            searchQuery = ""
                             status = "Document cleared from this screen."
                         }) { Text("Remove") }
                     }
@@ -161,6 +164,40 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
         )
 
         if (preview.isNotBlank()) {
+            Text("Find text in this document", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it.take(120) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Search extracted text") },
+                placeholder = { Text("Enter a word or phrase") }
+            )
+            if (searchQuery.isNotBlank()) {
+                val result = findDocumentMatches(preview, searchQuery)
+                Text(
+                    when {
+                        result.count == 0 -> "No matches in the extracted preview."
+                        result.count == 1 -> "1 match found in the extracted preview."
+                        else -> "${result.count} matches found in the extracted preview."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (result.firstSnippet.isNotBlank()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Text(
+                            "First match: ${result.firstSnippet}",
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
             Text("Local text preview", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = preview,
@@ -300,6 +337,28 @@ private fun inspectDocument(context: Context, uri: Uri): DocumentInspection {
     }
 }
 
+private data class DocumentSearchResult(val count: Int, val firstSnippet: String)
+
+private fun findDocumentMatches(text: String, query: String): DocumentSearchResult {
+    val term = query.trim()
+    if (term.isEmpty()) return DocumentSearchResult(0, "")
+    var fromIndex = 0
+    var count = 0
+    var firstSnippet = ""
+    while (fromIndex < text.length) {
+        val match = text.indexOf(term, fromIndex, ignoreCase = true)
+        if (match < 0) break
+        count++
+        if (count == 1) {
+            val start = (match - 70).coerceAtLeast(0)
+            val end = (match + term.length + 90).coerceAtMost(text.length)
+            val snippet = text.substring(start, end).replace('\n', ' ')
+            firstSnippet = (if (start > 0) "…" else "") + snippet + (if (end < text.length) "…" else "")
+        }
+        fromIndex = match + term.length.coerceAtLeast(1)
+    }
+    return DocumentSearchResult(count, firstSnippet)
+}
 private const val MAX_PDF_FILE_BYTES = 25L * 1024L * 1024L
 private const val MAX_PDF_PAGES = 30
 
