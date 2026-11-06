@@ -8,6 +8,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
@@ -200,14 +201,14 @@ class OkHttpChatRemoteDataSourceTest {
         val server = MockWebServer()
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
         server.start()
-        val callFailed = CountDownLatch(1)
+        val observedCall = AtomicReference<okhttp3.Call?>()
+        val callStarted = CountDownLatch(1)
         try {
             val client = OkHttpClient.Builder()
                 .eventListener(object : EventListener() {
-                    override fun callFailed(call: okhttp3.Call, ioe: java.io.IOException) {
-                        if (ioe.message?.contains("Canceled", ignoreCase = true) == true) {
-                            callFailed.countDown()
-                        }
+                    override fun callStart(call: okhttp3.Call) {
+                        observedCall.set(call)
+                        callStarted.countDown()
                     }
                 })
                 .build()
@@ -223,12 +224,16 @@ class OkHttpChatRemoteDataSourceTest {
                         ai.zayron.client.ui.chat.ChatMessage("uc", "Stop this", ai.zayron.client.ui.chat.ChatRole.USER)
                     ))) {}
                 }
-                assertTrue(server.takeRequest(5, TimeUnit.SECONDS) != null)
+                assertTrue("OkHttp call should start", callStarted.await(5, TimeUnit.SECONDS))
+                assertTrue("Mock server should receive the request",
+                    server.takeRequest(5, TimeUnit.SECONDS) != null)
                 requestJob.cancelAndJoin()
             }
 
-            assertTrue("Expected OkHttp to report cancellation of its network call",
-                callFailed.await(5, TimeUnit.SECONDS))
+            assertTrue(
+                "Coroutine cancellation must cancel the exact underlying OkHttp call",
+                observedCall.get()?.isCanceled == true
+            )
         } finally {
             server.shutdown()
         }
