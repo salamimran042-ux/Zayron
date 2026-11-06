@@ -36,6 +36,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.File
@@ -482,7 +483,7 @@ private const val MAX_DOCX_TOTAL_EXPANDED_BYTES = 8L * 1024L * 1024L
 private const val MAX_DOCX_XML_BYTES = 4 * 1024 * 1024
 private const val MAX_DOCX_ENTRIES = 256
 
-private class ArchiveByteLimitInputStream(
+internal class ArchiveByteLimitInputStream(
     input: java.io.InputStream,
     private val maxBytes: Long
 ) : java.io.FilterInputStream(input) {
