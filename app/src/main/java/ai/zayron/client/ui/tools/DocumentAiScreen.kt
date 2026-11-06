@@ -42,8 +42,8 @@ private const val MAX_PREVIEW_CHARS = 12_000
 
 /**
  * Local document preparation only. Plain-text files can be previewed on-device.
- * PDF and DOCX selection/metadata are supported, but text extraction, indexing,
- * citations, uploads and AI answers require later implementation/backend work.
+ * Plain-text and DOCX text previews are extracted locally. PDF text extraction,
+ * indexing, citations, uploads and AI answers require later implementation/backend work.
  */
 @Composable
 fun DocumentAiScreen(modifier: Modifier = Modifier) {
@@ -176,7 +176,7 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
             )
         ) {
             Text(
-                "Privacy and capability: the selected file is read locally only. Plain-text preview is available now. PDF and DOCX files can be selected and identified, but their text extraction is not implemented yet. AI questions, citations, indexing and cloud upload are not connected.",
+                "Privacy and capability: selected files are read locally only. Plain-text and DOCX previews are available now. PDF text extraction is not implemented yet. AI questions, citations, indexing and cloud upload are not connected.",
                 modifier = Modifier.padding(14.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -210,6 +210,28 @@ private fun inspectDocument(context: Context, uri: Uri): DocumentInspection {
     val isText = mime?.startsWith("text/") == true ||
         name.substringAfterLast('.', "").lowercase(Locale.ROOT) in
         setOf("txt", "md", "csv", "json", "xml", "log")
+
+    val isDocx = name.endsWith(".docx", ignoreCase = true) ||
+        mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+    if (isDocx) {
+        return try {
+            val text = extractDocxText(context, uri)
+            val preview = text.take(MAX_PREVIEW_CHARS)
+            val truncated = text.length > MAX_PREVIEW_CHARS
+            val message = when {
+                text.isBlank() -> "DOCX opened locally, but no readable paragraph text was found."
+                truncated -> "Word text extracted locally. Preview limited to the first $MAX_PREVIEW_CHARS characters."
+                else -> "Word text extracted locally. No upload was performed."
+            }
+            DocumentInspection(name, mime, size, preview, message)
+        } catch (error: Exception) {
+            DocumentInspection(
+                name, mime, size, "",
+                "The Word document could not be extracted safely: ${error.message ?: "unsupported or damaged file"}"
+            )
+        }
+    }
 
     if (!isText) {
         val message = when {
@@ -262,4 +284,53 @@ private fun formatFileSize(bytes: Long?): String {
         bytes < 1024L * 1024L -> String.format(Locale.ROOT, "%.1f KB", bytes / 1024.0)
         else -> String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0))
     }
+}
+
+
+/**
+ * Reads only word/document.xml and caps decompressed XML at 4 MiB to avoid
+ * unbounded memory use from malformed or highly-compressed DOCX entries.
+ */
+private fun extractDocxText(context: Context, uri: Uri): String {
+    val maxXmlBytes = 4 * 1024 * 1024
+    val xmlBytes = context.contentResolver.openInputStream(uri)?.use { raw ->
+        java.util.zip.ZipInputStream(raw).use { zip ->
+            var found: ByteArray? = null
+            var entry = zip.nextEntry
+            while (entry != null && found == null) {
+                if (entry.name == "word/document.xml" && !entry.isDirectory) {
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val count = zip.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= maxXmlBytes) { "document XML exceeds the safe extraction limit" }
+                        output.write(buffer, 0, count)
+                    }
+                    found = output.toByteArray()
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+            found ?: throw IllegalArgumentException("Word document content was not found")
+        }
+    } ?: throw IllegalStateException("The document could not be opened")
+
+    val parser = android.util.Xml.newPullParser()
+    parser.setInput(java.io.ByteArrayInputStream(xmlBytes), "UTF-8")
+    val result = StringBuilder()
+    var event = parser.eventType
+    while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT &&
+        result.length < MAX_PREVIEW_CHARS + 1
+    ) {
+        if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "t") {
+            result.append(parser.nextText())
+        } else if (event == org.xmlpull.v1.XmlPullParser.END_TAG && parser.name == "p") {
+            result.append('\n')
+        }
+        event = parser.next()
+    }
+    return result.toString().trim()
 }
