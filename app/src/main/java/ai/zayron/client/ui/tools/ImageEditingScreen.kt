@@ -109,7 +109,7 @@ fun ImageEditingScreen(modifier: Modifier = Modifier) {
         if (uri != null) {
             try {
                 val bitmap = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+                    context.contentResolver.openInputStream(uri)?.use { input -> BitmapFactory.decodeStream(input) }
                 }
                 if (bitmap != null) {
                     sourceBitmap = bitmap
