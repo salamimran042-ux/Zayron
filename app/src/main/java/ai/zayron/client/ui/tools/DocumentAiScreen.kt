@@ -337,28 +337,6 @@ private fun inspectDocument(context: Context, uri: Uri): DocumentInspection {
     }
 }
 
-private data class DocumentSearchResult(val count: Int, val firstSnippet: String)
-
-private fun findDocumentMatches(text: String, query: String): DocumentSearchResult {
-    val term = query.trim()
-    if (term.isEmpty()) return DocumentSearchResult(0, "")
-    var fromIndex = 0
-    var count = 0
-    var firstSnippet = ""
-    while (fromIndex < text.length) {
-        val match = text.indexOf(term, fromIndex, ignoreCase = true)
-        if (match < 0) break
-        count++
-        if (count == 1) {
-            val start = (match - 70).coerceAtLeast(0)
-            val end = (match + term.length + 90).coerceAtMost(text.length)
-            val snippet = text.substring(start, end).replace('\n', ' ')
-            firstSnippet = (if (start > 0) "…" else "") + snippet + (if (end < text.length) "…" else "")
-        }
-        fromIndex = match + term.length.coerceAtLeast(1)
-    }
-    return DocumentSearchResult(count, firstSnippet)
-}
 private const val MAX_PDF_FILE_BYTES = 25L * 1024L * 1024L
 private const val MAX_PDF_PAGES = 30
 
