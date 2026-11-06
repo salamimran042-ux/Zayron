@@ -83,4 +83,26 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           emulator-boot-timeout: 900
-          script: gradle --no-daemon :app:connectedDebugAndroidTest
+          script: |
+            set -euo pipefail
+            adb wait-for-device
+
+            # The emulator runner can report boot completion before Android's
+            # package manager is available. Wait for the service used by APK
+            # installation before starting instrumentation tests.
+            for attempt in $(seq 1 60); do
+              boot_completed="$(adb shell getprop sys.boot_completed | tr -d '\r')"
+              if [ "$boot_completed" = "1" ] && adb shell cmd package list packages >/dev/null 2>&1; then
+                echo "Android package manager is ready (attempt $attempt)."
+                gradle --no-daemon :app:connectedDebugAndroidTest
+                exit 0
+              fi
+              echo "Waiting for Android package manager (attempt $attempt/60)..."
+              sleep 5
+            done
+
+            echo "Android package manager did not become ready within 5 minutes."
+            adb shell getprop sys.boot_completed || true
+            adb shell service check package || true
+            adb logcat -d -t 300 || true
+            exit 1
