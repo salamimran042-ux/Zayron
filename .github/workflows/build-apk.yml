@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - zayron-ai-implementation
+      - 'feature/**'
   workflow_dispatch:
 
 permissions:
