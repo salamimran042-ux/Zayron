@@ -29,7 +29,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - A secure chat access-token provider reads the encrypted session and refuses to supply an expired access token.
 - Android instrumentation tests cover Keystore-backed save/read round-trips, plaintext absence, ciphertext tamper rejection, cleanup and fresh-session recreation. The instrumentation job passed in workflow runs #33, #35 and #36; the #36 log records four tests started and a successful Gradle test task.
 - Backend URL and relative API-path policy is isolated into testable helpers; JVM tests cover HTTPS-only configuration, base-path resolution and rejection of network-path references, encoded traversal examples, absolute, query, fragment and backslash paths.
-- The latest two security-correction workflows, #35 and #36, both completed successfully on the implementation branch. Run #36 also built and uploaded the debug APK.
+- The latest verified workflow, #53 (`Fix Android TextToSpeech import`), completed successfully: project identity/source checks, JVM tests + Android debug APK, and Android Keystore instrumentation tests all passed. A non-expired `Zayron-AI-Debug-APK` artifact was uploaded (about 15.9 MB). This is a debug build, not a release-signed APK.
 
 ## Partial / preparation only
 
@@ -41,7 +41,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Inpaint & Eraser: image selection and instruction entry only; no mask editor or image transformation.
 - Document AI: file selection only; no parsing, retrieval, citations or document upload.
 - App Builder: local app brief only; no code generation, preview, build worker or APK export.
-- Voice Assistant: interface only; no microphone capture, speech recognition or spoken AI response.
+- Voice Assistant: local Android microphone permission flow, SpeechRecognizer dictation, editable transcript and Android TextToSpeech read-aloud controls are implemented. Recognition availability and language support depend on the device service; this is not an AI assistant and does not send audio/text to a Zayron backend.
 - Network layer: shared transport, typed result handling, safe user-facing error mapping, a typed chat-stream contract, complete-frame SSE event parsing and incremental SSE frame decoding are prepared and covered by JVM tests. The secure token provider is not yet wired into a running backend session, and no automatic refresh-and-retry interceptor exists.
 
 ## Not yet implemented
@@ -54,7 +54,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Secure file upload, storage, deletion and job status tracking.
 - Provider integrations and server-side secrets management.
 - Server-side AI chat, image/video generation, inpainting, document RAG and app build workers.
-- Voice capture, speech-to-text and text-to-speech integration.
+- AI-backed voice conversation, server-side speech processing, and integration of spoken user requests with the Zayron assistant.
 - Backend integration tests and release signing.
 
 ## Security and release notes
@@ -65,7 +65,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Network calls run on the IO dispatcher and use bounded timeouts.
 - HTTP error responses are represented separately from transport failures. Response bodies are parsed carefully and are not exposed as raw user-facing error text.
 - No body/header logging interceptor is installed. Never embed provider API keys or service credentials in the APK.
-- The Android client has a Keystore-backed encrypted session-storage foundation. Its device-side instrumentation suite passed in CI workflow runs #33, #35 and #36; remote login, refresh coordination, logout/revocation and backend integration remain outstanding.
+- The Android client has a Keystore-backed encrypted session-storage foundation. Its device-side instrumentation suite passed in workflow #53; remote login, refresh coordination, logout/revocation and backend integration remain outstanding.
 - The chat preview is stored in app-private local preferences. It is not encrypted chat backup, account sync or a substitute for a secure backend.
 - Debug APKs from separate GitHub-hosted runners may have different debug signing certificates. An update may therefore require a matching signing key or uninstalling the previous debug build (which can erase local app data).
 - Do not label a feature as AI-powered until the complete backend path has been integrated and tested.
