@@ -93,18 +93,7 @@ jobs:
             set -eu
             adb wait-for-device
             echo "Waiting for Android to finish booting..."
-            for attempt in $(seq 1 90); do
-              boot_completed="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-              if [ "$boot_completed" = "1" ]; then
-                break
-              fi
-              sleep 5
-            done
-            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" != "1" ]; then
-              echo "Emulator did not complete boot within 7.5 minutes."
-              adb devices -l || true
-              exit 1
-            fi
+            i=0; while [ "$i" -lt 90 ] && [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' || true)" != "1" ]; do sleep 5; i=$((i + 1)); done; if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' || true)" != "1" ]; then echo "Emulator did not complete boot within 7.5 minutes."; adb devices -l || true; exit 1; fi
             adb shell getprop ro.build.version.sdk
             adb shell pm list packages >/dev/null
             adb devices -l
