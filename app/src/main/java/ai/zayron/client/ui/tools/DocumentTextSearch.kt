@@ -33,7 +33,7 @@ internal fun documentMatchSnippet(text: String, query: String, matchStart: Int):
 
     val start = (matchStart - 70).coerceAtLeast(0)
     val end = (matchStart + term.length + 90).coerceAtMost(text.length)
-    val snippet = text.substring(start, end).replace('\\n', ' ')
+    val snippet = text.substring(start, end).replace('\n', ' ').replace('\r', ' ')
     return (if (start > 0) "…" else "") +
         snippet +
         (if (end < text.length) "…" else "")
