@@ -29,7 +29,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - A secure chat access-token provider reads the encrypted session and refuses to supply an expired access token.
 - Android instrumentation tests cover Keystore-backed save/read round-trips, plaintext absence, ciphertext tamper rejection, cleanup and fresh-session recreation. The instrumentation job passed in workflow runs #33, #35 and #36; the #36 log records four tests started and a successful Gradle test task.
 - Backend URL and relative API-path policy is isolated into testable helpers; JVM tests cover HTTPS-only configuration, base-path resolution and rejection of network-path references, encoded traversal examples, absolute, query, fragment and backslash paths.
-- The latest verified workflow, #53 (`Fix Android TextToSpeech import`), completed successfully: project identity/source checks, JVM tests + Android debug APK, and Android Keystore instrumentation tests all passed. A non-expired `Zayron-AI-Debug-APK` artifact was uploaded (about 15.9 MB). This is a debug build, not a release-signed APK.
+- Workflow #53 (`Fix Android TextToSpeech import`) completed successfully: project identity/source checks, JVM tests + Android debug APK, and Android Keystore instrumentation tests all passed. A non-expired `Zayron-AI-Debug-APK` artifact was uploaded (about 15.9 MB). This is a debug build, not a release-signed APK. Newer workflows #59 and #60 have passed JVM tests and debug APK packaging and uploaded artifacts; their Android Keystore emulator jobs were still running at the time of the latest status check.
 
 ## Partial / preparation only
 
@@ -38,13 +38,13 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - AI Chat: local-only message history and role-aware conversation presentation; no assistant response generation, streaming, cloud sync or server delivery.
 - Chat network transport: an OkHttp SSE adapter now exists behind the remote data-source interface. It requires an injected access-token provider and a deployed backend endpoint; it is not connected to the chat UI or called by the app. MockWebServer tests exercise event streaming, bearer-token attachment, missing-token rejection and HTTP error handling.
 - Image-to-Video: image selection and prompt entry only.
-- Inpaint & Eraser: image selection and instruction entry only; no mask editor or image transformation.
-- Document AI: file selection only; no parsing, retrieval, citations or document upload.
+- Inpaint & Eraser: local image selection and an in-memory mask-preparation canvas with brush strokes, brush-size adjustment, undo and clear controls. The editor does not yet export/persist the mask or perform AI inpainting/background removal.
+- Document AI: local file selection and metadata inspection for PDF, TXT/plain text and DOCX. Plain-text formats (including TXT, Markdown, CSV, JSON, XML and LOG) can be previewed locally up to 12,000 characters. PDF and DOCX are identified but their text extraction is not implemented. No file is uploaded; document Q&A, indexing, retrieval and citations are not connected.
 - App Builder: local app brief only; no code generation, preview, build worker or APK export.
 - Voice Assistant: local Android microphone permission flow, SpeechRecognizer dictation, editable transcript and Android TextToSpeech read-aloud controls are implemented. Recognition availability and language support depend on the device service; this is not an AI assistant and does not send audio/text to a Zayron backend.
 - Network layer: shared transport, typed result handling, safe user-facing error mapping, a typed chat-stream contract, complete-frame SSE event parsing and incremental SSE frame decoding are prepared and covered by JVM tests. The secure token provider is not yet wired into a running backend session, and no automatic refresh-and-retry interceptor exists.
 
-## Not yet implemented
+## Recent local UI milestones (not yet backend-connected)\n\n- Image editing now includes a local mask-preparation canvas; mask persistence/export and image transformation remain outstanding.\n- Document AI now inspects selected file metadata and previews bounded plain-text content locally; PDF/DOCX text extraction and all AI/document-backend features remain outstanding.\n\n## Not yet implemented
 
 - Production backend deployment and configured HTTPS API base URL.
 - HTTPS API authentication, remote login, automatic token refresh and server-side session revocation.
