@@ -60,6 +60,7 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
     var selectedSize by remember { mutableStateOf<Long?>(null) }
     var preview by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
+    var searchMatchIndex by remember { mutableStateOf(0) }
     var status by remember { mutableStateOf("Choose a document to inspect it on this device.") }
     var loading by remember { mutableStateOf(false) }
 
@@ -70,6 +71,7 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
             loading = true
             preview = ""
             searchQuery = ""
+            searchMatchIndex = 0
             status = "Reading document details…"
             scope.launch {
                 val result = withContext(Dispatchers.IO) {
@@ -150,6 +152,7 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
                             selectedSize = null
                             preview = ""
                             searchQuery = ""
+                            searchMatchIndex = 0
                             status = "Document cleared from this screen."
                         }) { Text("Remove") }
                     }
@@ -167,7 +170,10 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
             Text("Find text in this document", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = { searchQuery = it.take(120) },
+                onValueChange = {
+                    searchQuery = it.take(120)
+                    searchMatchIndex = 0
+                },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Search extracted text") },
@@ -184,13 +190,40 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (result.firstSnippet.isNotBlank()) {
+                if (result.matchStarts.isNotEmpty()) {
+                    val safeIndex = searchMatchIndex.coerceIn(0, result.matchStarts.lastIndex)
+                    val snippet = documentMatchSnippet(
+                        preview,
+                        searchQuery,
+                        result.matchStarts[safeIndex]
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { searchMatchIndex = (safeIndex - 1).coerceAtLeast(0) },
+                            enabled = safeIndex > 0
+                        ) { Text("Previous") }
+                        OutlinedButton(
+                            onClick = {
+                                searchMatchIndex = (safeIndex + 1).coerceAtMost(result.matchStarts.lastIndex)
+                            },
+                            enabled = safeIndex < result.matchStarts.lastIndex
+                        ) { Text("Next") }
+                        Text(
+                            "Match ${safeIndex + 1} of ${result.count}",
+                            modifier = Modifier.padding(top = 12.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                     ) {
                         Text(
-                            "First match: ${result.firstSnippet}",
+                            "Selected match: $snippet",
                             modifier = Modifier.padding(12.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
