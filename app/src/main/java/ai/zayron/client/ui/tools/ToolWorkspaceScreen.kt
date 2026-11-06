@@ -1,5 +1,7 @@
 package ai.zayron.client.ui.tools
 
+import android.net.Uri
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
