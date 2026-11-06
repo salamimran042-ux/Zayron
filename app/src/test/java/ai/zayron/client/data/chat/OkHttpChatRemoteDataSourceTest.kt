@@ -8,6 +8,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -203,12 +204,19 @@ class OkHttpChatRemoteDataSourceTest {
         server.start()
         val observedCall = AtomicReference<okhttp3.Call?>()
         val callStarted = CountDownLatch(1)
+        val callFailed = CountDownLatch(1)
+        val cancelledAtFailure = AtomicBoolean(false)
         try {
             val client = OkHttpClient.Builder()
                 .eventListener(object : EventListener() {
                     override fun callStart(call: okhttp3.Call) {
                         observedCall.set(call)
                         callStarted.countDown()
+                    }
+
+                    override fun callFailed(call: okhttp3.Call, ioe: java.io.IOException) {
+                        cancelledAtFailure.set(call.isCanceled())
+                        callFailed.countDown()
                     }
                 })
                 .build()
@@ -230,10 +238,12 @@ class OkHttpChatRemoteDataSourceTest {
                 requestJob.cancelAndJoin()
             }
 
-            assertTrue(
-                "Coroutine cancellation must cancel the exact underlying OkHttp call",
-                observedCall.get()?.isCanceled() == true
-            )
+            assertTrue("OkHttp should report the cancelled call failure",
+                callFailed.await(5, TimeUnit.SECONDS))
+            assertTrue("The exact OkHttp call captured at callStart must be cancelled",
+                observedCall.get() === observedCall.get()?.takeIf { it.isCanceled() })
+            assertTrue("OkHttp must report the call as cancelled in callFailed",
+                cancelledAtFailure.get())
         } finally {
             server.shutdown()
         }
