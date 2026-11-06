@@ -10,6 +10,7 @@ import ai.zayron.client.data.auth.SecureChatAccessTokenProvider
 import ai.zayron.client.data.chat.ChatRemoteDataSource
 import ai.zayron.client.data.chat.ChatStreamEvent
 import ai.zayron.client.data.chat.ChatStreamRequest
+import ai.zayron.client.data.chat.chatMessagesForRemoteRequest
 import ai.zayron.client.data.chat.LocalChatRepository
 import ai.zayron.client.data.chat.OkHttpChatRemoteDataSource
 import ai.zayron.client.data.chat.ChatRepository
@@ -73,10 +74,7 @@ class ChatViewModel(
 
         // Include only history already acknowledged by the backend. A local preview
         // or a failed attempt must never be uploaded as hidden conversation context.
-        val requestMessages = messages
-            .filter { it.deliveryState == DeliveryState.SENT }
-            .toMutableList()
-            .apply { add(userMessage) }
+        val requestMessages = chatMessagesForRemoteRequest(messages.toList(), userMessage)
 
         sendJob = viewModelScope.launch {
             _isSending.value = true
