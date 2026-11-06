@@ -27,7 +27,8 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Authentication domain contract separates non-secret session profile data, stable failure categories and repository operations from the UI.
 - Session credentials have an Android Keystore AES-256-GCM encryption foundation, stored as ciphertext in app-private no-backup storage with no plaintext fallback.
 - A secure chat access-token provider reads the encrypted session and refuses to supply an expired access token.
-- Android instrumentation tests have been added for Keystore-backed save/read round-trips, plaintext absence, ciphertext tamper rejection, cleanup and fresh-session recreation. CI now runs these tests on an API 34 Android emulator before building the APK; the first emulator test result is pending.
+- Android instrumentation tests cover Keystore-backed save/read round-trips, plaintext absence, ciphertext tamper rejection, cleanup and fresh-session recreation; the CI instrumentation job passed in workflow run #33.
+- Backend URL and relative API-path policy is isolated into testable helpers; new JVM tests cover HTTPS-only configuration, base-path resolution and rejection of traversal, absolute, query, fragment and backslash paths.
 
 ## Partial / preparation only
 
@@ -63,7 +64,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Network calls run on the IO dispatcher and use bounded timeouts.
 - HTTP error responses are represented separately from transport failures. Response bodies are parsed carefully and are not exposed as raw user-facing error text.
 - No body/header logging interceptor is installed. Never embed provider API keys or service credentials in the APK.
-- The Android client has a Keystore-backed encrypted session-storage foundation. Its device-side instrumentation suite is now wired into CI; the result must pass before treating the Android Keystore behavior as verified. Remote login, refresh coordination, logout/revocation and backend integration remain outstanding.
+- The Android client has a Keystore-backed encrypted session-storage foundation. Its device-side instrumentation suite passed in CI workflow run #33; remote login, refresh coordination, logout/revocation and backend integration remain outstanding.
 - The chat preview is stored in app-private local preferences. It is not encrypted chat backup, account sync or a substitute for a secure backend.
 - Debug APKs from separate GitHub-hosted runners may have different debug signing certificates. An update may therefore require a matching signing key or uninstalling the previous debug build (which can erase local app data).
 - Do not label a feature as AI-powered until the complete backend path has been integrated and tested.

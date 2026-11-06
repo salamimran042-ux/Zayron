@@ -11,6 +11,37 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
+ * Parses only an explicitly configured HTTPS backend URL.
+ * Kept as a pure helper so URL policy can be verified without a live service.
+ */
+internal fun resolveBackendBaseUrl(configuredUrl: String): HttpUrl? {
+    val trimmed = configuredUrl.trim()
+    if (trimmed.isEmpty()) return null
+    val normalized = if (trimmed.endsWith("/")) trimmed else "$trimmed/"
+    return normalized.toHttpUrlOrNull()?.takeIf { it.isHttps }
+}
+
+/**
+ * Resolves a relative path beneath the configured backend base path.
+ * Absolute URLs, traversal segments, query strings and fragments are rejected.
+ */
+internal fun resolveApiUrl(baseUrl: HttpUrl?, relativePath: String): HttpUrl? {
+    baseUrl ?: return null
+    val path = relativePath.trim().trimStart('/')
+
+    if (path.isEmpty() || "://" in path || path.startsWith("//") ||
+        '?' in path || '#' in path || '\\' in path ||
+        path.split('/').any { it == "." || it == ".." }
+    ) {
+        return null
+    }
+
+    return baseUrl.newBuilder()
+        .addPathSegments(path)
+        .build()
+}
+
+/**
  * Shared HTTP client for the future Zayron backend.
  *
  * No provider credentials, token values, or body-logging interceptor belong here.
@@ -23,13 +54,7 @@ object ApiClient {
     private const val CALL_TIMEOUT_SECONDS = 90L
 
     private val backendBaseUrl: HttpUrl?
-        get() {
-            val configuredUrl = AiServiceConfig.API_BASE_URL.trim()
-            if (configuredUrl.isEmpty()) return null
-
-            val normalizedUrl = if (configuredUrl.endsWith("/")) configuredUrl else "$configuredUrl/"
-            return normalizedUrl.toHttpUrlOrNull()?.takeIf { it.isHttps }
-        }
+        get() = resolveBackendBaseUrl(AiServiceConfig.API_BASE_URL)
 
     val isConfigured: Boolean
         get() = backendBaseUrl != null
@@ -45,26 +70,9 @@ object ApiClient {
             .build()
     }
 
-    /**
-     * Resolves an internal relative API path. Absolute URLs, traversal segments,
-     * query strings and fragments are rejected; query parameters should be added
-     * explicitly by the endpoint implementation.
-     */
-    fun urlFor(relativePath: String): HttpUrl? {
-        val baseUrl = backendBaseUrl ?: return null
-        val path = relativePath.trim().trimStart('/')
-
-        if (path.isEmpty() || "://" in path || path.startsWith("//") ||
-            '?' in path || '#' in path || '\\' in path ||
-            path.split('/').any { it == "." || it == ".." }
-        ) {
-            return null
-        }
-
-        return baseUrl.newBuilder()
-            .addPathSegments(path)
-            .build()
-    }
+    /** Resolves an internal relative API path beneath the configured HTTPS backend. */
+    fun urlFor(relativePath: String): HttpUrl? =
+        resolveApiUrl(backendBaseUrl, relativePath)
 
     /**
      * Executes a request off the main thread and returns a typed result.
