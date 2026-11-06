@@ -102,3 +102,23 @@ jobs:
               adb logcat -d -t 300 || true
               exit 1
             '
+
+  verify-project-integrity:
+    name: Zayron project identity and source checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out committed source
+        uses: actions/checkout@v4
+
+      - name: Verify required Android project files
+        run: |
+          test -f app/build.gradle.kts
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/ai/zayron/client/MainActivity.kt
+
+      - name: Verify official app identity
+        run: |
+          grep -Fq 'namespace = "ai.zayron.client"' app/build.gradle.kts
+          grep -Fq 'applicationId = "ai.zayron.client"' app/build.gradle.kts
+          grep -Fq 'android:label="Zayron AI"' app/src/main/AndroidManifest.xml
+          echo "Zayron AI package, label, and required source files verified."
