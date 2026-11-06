@@ -51,10 +51,11 @@ fun ToolWorkspaceScreen(
     mode: String,
     modifier: Modifier = Modifier
 ) {
-    var selectedImage by remember { mutableStateOf<Uri?>(null) }
-    var selectedDocument by remember { mutableStateOf<Uri?>(null) }
-    var prompt by remember { mutableStateOf("") }
-    var appBrief by remember { mutableStateOf("") }
+    // Keep each tool's draft and selected file isolated when the user switches modes.
+    var selectedImage by remember(mode) { mutableStateOf<Uri?>(null) }
+    var selectedDocument by remember(mode) { mutableStateOf<Uri?>(null) }
+    var prompt by remember(mode) { mutableStateOf("") }
+    var appBrief by remember(mode) { mutableStateOf("") }
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
