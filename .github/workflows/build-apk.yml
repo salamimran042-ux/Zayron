@@ -80,10 +80,26 @@ jobs:
           target: default
           arch: x86_64
           profile: pixel_2
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data -camera-back none
           disable-animations: true
           emulator-boot-timeout: 900
-          script: ready=0; for i in $(seq 1 30); do if adb shell settings get global device_provisioned >/dev/null 2>&1; then ready=1; break; fi; sleep 5; done; test "$ready" -eq 1; gradle --no-daemon :app:connectedDebugAndroidTest
+          script: |
+            adb wait-for-device
+            ready=0
+            for i in $(seq 1 90); do
+              booted=$(timeout 20s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' || true)
+              sdk=$(timeout 20s adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\\r' || true)
+              provisioned=$(timeout 20s adb shell settings get global device_provisioned 2>/dev/null | tr -d '\\r' || true)
+              if [ "$booted" = "1" ] && [ "$sdk" = "30" ] && [ "$provisioned" = "1" ]; then
+                ready=1
+                break
+              fi
+              adb wait-for-device
+              sleep 10
+            done
+            test "$ready" -eq 1
+            timeout 30s adb shell pm list packages >/dev/null
+            gradle --no-daemon :app:connectedDebugAndroidTest
 
   verify-project-integrity:
     name: Zayron project identity and source checks
