@@ -2,6 +2,7 @@ package ai.zayron.client.data.chat
 
 import ai.zayron.client.ui.chat.ChatMessage
 import ai.zayron.client.ui.chat.ChatRole
+import ai.zayron.client.ui.chat.DeliveryState
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -28,6 +29,32 @@ class ChatStreamContractTest {
         val json = JSONObject(request.toJson())
         assertEquals(true, json.isNull("conversationId"))
         assertEquals(1, json.getJSONArray("messages").length())
+    }
+
+
+    @Test fun remoteRequestContextIncludesOnlyPreviouslySentMessagesAndCurrentUserMessage() {
+        val sentUser = ChatMessage("sent-user", "Earlier question", ChatRole.USER, DeliveryState.SENT)
+        val sentAssistant = ChatMessage("sent-assistant", "Earlier answer", ChatRole.ASSISTANT, DeliveryState.SENT)
+        val localOnly = ChatMessage("local", "Private draft", ChatRole.USER, DeliveryState.LOCAL_ONLY)
+        val failed = ChatMessage("failed", "Failed attempt", ChatRole.USER, DeliveryState.FAILED)
+        val pending = ChatMessage("pending", "Interrupted response", ChatRole.ASSISTANT, DeliveryState.PENDING)
+        val current = ChatMessage("current", "New question", ChatRole.USER, DeliveryState.PENDING)
+
+        assertEquals(
+            listOf(sentUser, sentAssistant, current),
+            chatMessagesForRemoteRequest(
+                listOf(sentUser, sentAssistant, localOnly, failed, pending),
+                current
+            )
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun remoteRequestContextRejectsAssistantAsCurrentMessage() {
+        chatMessagesForRemoteRequest(
+            emptyList(),
+            ChatMessage("assistant", "Not a user request", ChatRole.ASSISTANT)
+        )
     }
 
     @Test fun parsesDelta() {
