@@ -78,8 +78,8 @@ class ChatViewModel(
 
         _isSending.value = true
         sendJob = viewModelScope.launch {
-            try {
             val assistantId = UUID.randomUUID().toString()
+            try {
             val events = Channel<ChatStreamEvent>(Channel.UNLIMITED)
             val eventCollector = launch {
                 for (event in events) {
