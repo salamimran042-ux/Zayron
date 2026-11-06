@@ -9,16 +9,17 @@ class DocumentTextSearchTest {
 
     @Test
     fun emptyOrWhitespaceQueryReturnsNoMatches() {
-        assertEquals(DocumentSearchResult(0, ""), findDocumentMatches("Zayron AI", ""))
-        assertEquals(DocumentSearchResult(0, ""), findDocumentMatches("Zayron AI", "   "))
+        assertEquals(DocumentSearchResult(0, emptyList()), findDocumentMatches("Zayron AI", ""))
+        assertEquals(DocumentSearchResult(0, emptyList()), findDocumentMatches("Zayron AI", "   "))
     }
 
     @Test
     fun searchIsCaseInsensitive() {
-        val result = findDocumentMatches("Zayron AI builds useful tools. zAyRoN AI keeps improving.", "ZAYRON ai")
+        val text = "Zayron AI builds useful tools. zAyRoN AI keeps improving."
+        val result = findDocumentMatches(text, "ZAYRON ai")
 
         assertEquals(2, result.count)
-        assertTrue(result.firstSnippet.contains("Zayron AI"))
+        assertTrue(documentMatchSnippet(text, "ZAYRON ai", result.matchStarts[0]).contains("Zayron AI"))
     }
 
     @Test
@@ -26,7 +27,7 @@ class DocumentTextSearchTest {
         val result = findDocumentMatches("AI, AI, and AI", "AI")
 
         assertEquals(3, result.count)
-        assertTrue(result.firstSnippet.startsWith("AI"))
+        assertEquals(listOf(0, 4, 12), result.matchStarts)
     }
 
     @Test
@@ -34,26 +35,46 @@ class DocumentTextSearchTest {
         val result = findDocumentMatches("Local document search", "  document  ")
 
         assertEquals(1, result.count)
-        assertTrue(result.firstSnippet.contains("document"))
+        assertTrue(result.matchStarts.isNotEmpty())
     }
 
     @Test
     fun addsEllipsesWhenFirstMatchHasSurroundingContext() {
         val text = "prefix ".repeat(15) + "needle" + " suffix".repeat(15)
         val result = findDocumentMatches(text, "needle")
+        val snippet = documentMatchSnippet(text, "needle", result.matchStarts[0])
 
         assertEquals(1, result.count)
-        assertTrue(result.firstSnippet.startsWith("…"))
-        assertTrue(result.firstSnippet.endsWith("…"))
-        assertTrue(result.firstSnippet.contains("needle"))
+        assertTrue(snippet.startsWith("…"))
+        assertTrue(snippet.endsWith("…"))
+        assertTrue(snippet.contains("needle"))
     }
 
     @Test
     fun snippetReplacesLineBreaksWithSpaces() {
-        val result = findDocumentMatches("first line\nneedle\nlast line", "needle")
+        val text = "first line\nneedle\nlast line"
+        val result = findDocumentMatches(text, "needle")
+        val snippet = documentMatchSnippet(text, "needle", result.matchStarts[0])
 
         assertEquals(1, result.count)
-        assertFalse(result.firstSnippet.contains('\n'))
-        assertTrue(result.firstSnippet.contains("first line needle last line"))
+        assertFalse(snippet.contains('\n'))
+        assertTrue(snippet.contains("first line needle last line"))
+    }
+
+    @Test
+    fun storesEveryMatchOffsetForPreviousAndNextNavigation() {
+        val text = "one hit, then another hit, then a final hit"
+        val result = findDocumentMatches(text, "hit")
+
+        assertEquals(3, result.count)
+        assertEquals(3, result.matchStarts.size)
+        assertTrue(documentMatchSnippet(text, "hit", result.matchStarts[1]).contains("another hit"))
+        assertTrue(documentMatchSnippet(text, "hit", result.matchStarts[2]).contains("final hit"))
+    }
+
+    @Test
+    fun invalidMatchOffsetReturnsEmptySnippet() {
+        assertEquals("", documentMatchSnippet("sample text", "sample", -1))
+        assertEquals("", documentMatchSnippet("sample text", "sample", 99))
     }
 }
