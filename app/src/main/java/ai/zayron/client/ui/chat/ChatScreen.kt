@@ -45,7 +45,7 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(messages.size) {
+    LaunchedEffect(messages.size, messages.lastOrNull()?.text) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
 
@@ -93,7 +93,7 @@ fun ChatScreen(
             Text(
                 notice,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
             )
         }
@@ -151,9 +151,9 @@ fun ChatScreen(
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 when {
-                                    message.deliveryState == DeliveryState.SENT -> "Sent securely"
-                                    message.deliveryState == DeliveryState.PENDING -> "Sending…"
-                                    message.deliveryState == DeliveryState.FAILED -> "Not delivered"
+                                    message.deliveryState == DeliveryState.SENT -> if (isUser) "Sent securely" else "Response received"
+                                    message.deliveryState == DeliveryState.PENDING -> if (isUser) "Sending…" else "Generating…"
+                                    message.deliveryState == DeliveryState.FAILED -> if (isUser) "Not delivered" else "Response interrupted"
                                     isUser -> "Saved on this device • not sent"
                                     else -> "Local assistant message"
                                 },
