@@ -44,6 +44,7 @@ class ChatViewModel(
     val isSending: Boolean get() = _isSending.value
 
     private var sendJob: kotlinx.coroutines.Job? = null
+    private var activeRequestId: String? = null
 
     init {
         val restored = chatRepository.loadMessages()
@@ -76,6 +77,8 @@ class ChatViewModel(
         // or a failed attempt must never be uploaded as hidden conversation context.
         val requestMessages = chatMessagesForRemoteRequest(messages.toList(), userMessage)
 
+        val requestGeneration = UUID.randomUUID().toString()
+        activeRequestId = requestGeneration
         _isSending.value = true
         sendJob = viewModelScope.launch {
             val assistantId = UUID.randomUUID().toString()
@@ -166,8 +169,13 @@ class ChatViewModel(
                     )
                 }
                 persistMessages()
-                _isSending.value = false
-                sendJob = null
+                // A cancelled older request must not unlock or clear the handle
+                // belonging to a newer request started after conversation clearing.
+                if (activeRequestId == requestGeneration) {
+                    activeRequestId = null
+                    _isSending.value = false
+                    sendJob = null
+                }
             }
         }
     }
@@ -179,6 +187,7 @@ class ChatViewModel(
     }
 
     fun clearConversation() {
+        activeRequestId = null
         sendJob?.cancel()
         sendJob = null
         messages.clear()
