@@ -49,6 +49,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
+    // On-device PDF text extraction; Apache License 2.0.
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+
     // JVM unit tests for safe network error handling and streaming transport.
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
