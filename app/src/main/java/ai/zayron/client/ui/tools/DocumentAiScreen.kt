@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -63,26 +65,36 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
     var searchMatchIndex by remember { mutableStateOf(0) }
     var status by remember { mutableStateOf("Choose a document to inspect it on this device.") }
     var loading by remember { mutableStateOf(false) }
+    var inspectionJob by remember { mutableStateOf<Job?>(null) }
 
     val picker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
+            inspectionJob?.cancel()
             loading = true
             preview = ""
             searchQuery = ""
             searchMatchIndex = 0
             status = "Reading document details…"
-            scope.launch {
-                val result = withContext(Dispatchers.IO) {
-                    inspectDocument(context, uri)
+            inspectionJob = scope.launch {
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        inspectDocument(context, uri)
+                    }
+                    selectedName = result.name
+                    selectedMime = result.mime
+                    selectedSize = result.size
+                    preview = result.preview
+                    status = result.message
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } finally {
+                    if (inspectionJob === coroutineContext[Job]) {
+                        loading = false
+                        inspectionJob = null
+                    }
                 }
-                selectedName = result.name
-                selectedMime = result.mime
-                selectedSize = result.size
-                preview = result.preview
-                status = result.message
-                loading = false
             }
         }
     }
@@ -147,6 +159,9 @@ fun DocumentAiScreen(modifier: Modifier = Modifier) {
                     ) { Text(if (selectedName == null) "Choose document" else "Choose another") }
                     if (selectedName != null) {
                         OutlinedButton(onClick = {
+                            inspectionJob?.cancel()
+                            inspectionJob = null
+                            loading = false
                             selectedName = null
                             selectedMime = null
                             selectedSize = null
@@ -270,6 +285,19 @@ private data class DocumentInspection(
 )
 
 private fun inspectDocument(context: Context, uri: Uri): DocumentInspection {
+    return try {
+        inspectDocumentUnsafe(context, uri)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        DocumentInspection(
+            "Selected document", null, null, "",
+            "The selected document could not be inspected. Check that it is accessible, supported and not damaged, then try again."
+        )
+    }
+}
+
+private fun inspectDocumentUnsafe(context: Context, uri: Uri): DocumentInspection {
     var name = "Selected document"
     var size: Long? = null
     var mime: String? = null
@@ -304,7 +332,7 @@ private fun inspectDocument(context: Context, uri: Uri): DocumentInspection {
         } catch (error: Exception) {
             DocumentInspection(
                 name, mime, size, "",
-                "The Word document could not be extracted safely: ${error.message ?: "unsupported or damaged file"}"
+                "The Word document could not be extracted safely. It may be damaged, unsupported or exceed the local processing limits."
             )
         }
     }
@@ -365,7 +393,7 @@ private fun inspectDocument(context: Context, uri: Uri): DocumentInspection {
             mime,
             size,
             "",
-            "The file was selected, but its text could not be read: ${error.message ?: "unknown error"}"
+            "The file was selected, but its text could not be read. Check file access and encoding, then try again."
         )
     }
 }
@@ -389,6 +417,19 @@ private class LimitedTextWriter(private val maxChars: Int) : Writer() {
     override fun close() = Unit
 }
 
+private object PdfBoxInitialization {
+    @Volatile private var initialized = false
+    fun ensureInitialized(context: Context) {
+        if (initialized) return
+        synchronized(this) {
+            if (!initialized) {
+                PDFBoxResourceLoader.init(context.applicationContext)
+                initialized = true
+            }
+        }
+    }
+}
+
 private fun extractPdfText(context: Context, uri: Uri): PdfExtraction {
     val tempPdf = File.createTempFile("zayron-document-", ".pdf", context.cacheDir)
     try {
@@ -405,7 +446,7 @@ private fun extractPdfText(context: Context, uri: Uri): PdfExtraction {
                 }
             }
         } ?: throw IllegalStateException("The PDF could not be opened.")
-        PDFBoxResourceLoader.init(context.applicationContext)
+        PdfBoxInitialization.ensureInitialized(context)
         PDDocument.load(tempPdf).use { document ->
             val pageCount = document.numberOfPages
             val writer = LimitedTextWriter(MAX_PREVIEW_CHARS)
@@ -432,29 +473,73 @@ private fun formatFileSize(bytes: Long?): String {
 
 
 /**
- * Reads only word/document.xml and caps decompressed XML at 4 MiB to avoid
- * unbounded memory use from malformed or highly-compressed DOCX entries.
+ * Reads only the DOCX main document part. Both compressed input and expanded
+ * ZIP content are bounded; entry traversal is capped to resist ZIP bombs.
+ * XML document declarations/DOCTYPE processing are disabled and rejected.
  */
+private const val MAX_DOCX_ARCHIVE_BYTES = 10L * 1024L * 1024L
+private const val MAX_DOCX_TOTAL_EXPANDED_BYTES = 8L * 1024L * 1024L
+private const val MAX_DOCX_XML_BYTES = 4 * 1024 * 1024
+private const val MAX_DOCX_ENTRIES = 256
+
+private class ArchiveByteLimitInputStream(
+    input: java.io.InputStream,
+    private val maxBytes: Long
+) : java.io.FilterInputStream(input) {
+    private var bytesRead = 0L
+    override fun read(): Int {
+        if (bytesRead >= maxBytes) {
+            val extra = super.read()
+            if (extra < 0) return -1
+            throw java.io.IOException("DOCX archive exceeds the safe input limit")
+        }
+        val value = super.read()
+        if (value >= 0) bytesRead++
+        return value
+    }
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (length == 0) return 0
+        if (bytesRead >= maxBytes) {
+            val extra = super.read()
+            if (extra < 0) return -1
+            throw java.io.IOException("DOCX archive exceeds the safe input limit")
+        }
+        val allowed = minOf(length.toLong(), maxBytes - bytesRead).toInt()
+        val count = super.read(buffer, offset, allowed)
+        if (count > 0) bytesRead += count
+        return count
+    }
+}
+
 private fun extractDocxText(context: Context, uri: Uri): String {
-    val maxXmlBytes = 4 * 1024 * 1024
     val xmlBytes = context.contentResolver.openInputStream(uri)?.use { raw ->
-        java.util.zip.ZipInputStream(raw).use { zip ->
+        java.util.zip.ZipInputStream(ArchiveByteLimitInputStream(raw, MAX_DOCX_ARCHIVE_BYTES)).use { zip ->
             var found: ByteArray? = null
+            var totalExpanded = 0L
+            var entryCount = 0
             var entry = zip.nextEntry
-            while (entry != null && found == null) {
-                if (entry.name == "word/document.xml" && !entry.isDirectory) {
-                    val output = java.io.ByteArrayOutputStream()
-                    val buffer = ByteArray(8192)
-                    var total = 0
-                    while (true) {
-                        val count = zip.read(buffer)
-                        if (count < 0) break
-                        total += count
-                        require(total <= maxXmlBytes) { "document XML exceeds the safe extraction limit" }
+            while (entry != null) {
+                entryCount++
+                require(entryCount <= MAX_DOCX_ENTRIES) { "DOCX contains too many archive entries" }
+                val isDocumentXml = entry.name == "word/document.xml" && !entry.isDirectory
+                require(!isDocumentXml || found == null) { "DOCX contains duplicate main document parts" }
+                val output = if (isDocumentXml) java.io.ByteArrayOutputStream() else null
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = zip.read(buffer)
+                    if (count < 0) break
+                    totalExpanded += count
+                    require(totalExpanded <= MAX_DOCX_TOTAL_EXPANDED_BYTES) {
+                        "DOCX expanded content exceeds the safe limit"
+                    }
+                    if (output != null) {
+                        require(output.size().toLong() + count <= MAX_DOCX_XML_BYTES) {
+                            "DOCX document XML exceeds the safe extraction limit"
+                        }
                         output.write(buffer, 0, count)
                     }
-                    found = output.toByteArray()
                 }
+                if (output != null) found = output.toByteArray()
                 zip.closeEntry()
                 entry = zip.nextEntry
             }
@@ -463,18 +548,24 @@ private fun extractDocxText(context: Context, uri: Uri): String {
     } ?: throw IllegalStateException("The document could not be opened")
 
     val parser = android.util.Xml.newPullParser()
+    parser.setFeature(org.xmlpull.v1.XmlPullParser.FEATURE_PROCESS_DOCDECL, false)
     parser.setInput(java.io.ByteArrayInputStream(xmlBytes), "UTF-8")
     val result = StringBuilder()
     var event = parser.eventType
-    while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT &&
-        result.length < MAX_PREVIEW_CHARS + 1
-    ) {
-        if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "t") {
-            result.append(parser.nextText())
-        } else if (event == org.xmlpull.v1.XmlPullParser.END_TAG && parser.name == "p") {
-            result.append('\n')
+    while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT && result.length < MAX_PREVIEW_CHARS + 1) {
+        when (event) {
+            org.xmlpull.v1.XmlPullParser.DOCDECL ->
+                throw IllegalArgumentException("DOCX XML document declarations are not supported")
+            org.xmlpull.v1.XmlPullParser.START_TAG -> if (parser.name == "t") {
+                val text = parser.nextText()
+                val remaining = MAX_PREVIEW_CHARS + 1 - result.length
+                if (remaining > 0) result.append(text.take(remaining))
+            }
+            org.xmlpull.v1.XmlPullParser.END_TAG -> if (parser.name == "p") {
+                if (result.length < MAX_PREVIEW_CHARS + 1) result.append('\n')
+            }
         }
         event = parser.next()
     }
-    return result.toString().trim()
+    return result.toString().take(MAX_PREVIEW_CHARS).trim()
 }
