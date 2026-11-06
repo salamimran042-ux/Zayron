@@ -24,10 +24,19 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import ai.zayron.client.ui.chat.ChatScreen
+import ai.zayron.client.ui.dashboard.DashboardScreen
 import ai.zayron.client.ui.tools.ToolWorkspaceScreen
 
 private val ZayronPurple = Color(0xFF5146D8)
-private val ZayronModes = listOf("AI Chat", "Video Generation", "Image Editing", "Document AI", "App Builder", "Voice Assistant")
+private val ZayronModes = listOf(
+    "Home",
+    "AI Chat",
+    "Video Generation",
+    "Image Editing",
+    "Document AI",
+    "App Builder",
+    "Voice Assistant"
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -97,7 +106,7 @@ private fun SignIn(onPreview: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
-    var mode by rememberSaveable { mutableStateOf("AI Chat") }
+    var mode by rememberSaveable { mutableStateOf("Home") }
     var menu by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -122,7 +131,8 @@ private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
                     }
                     Box {
                         OutlinedButton(onClick = { menu = true }, modifier = Modifier.padding(end = 8.dp)) {
-                            Text(mode, maxLines = 1); Icon(Icons.Default.ArrowDropDown, "Select mode")
+                            Text(mode, maxLines = 1)
+                            Icon(Icons.Default.ArrowDropDown, "Select workspace")
                         }
                         DropdownMenu(menu, { menu = false }) {
                             ZayronModes.forEach { item ->
@@ -137,10 +147,13 @@ private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            if (mode == "AI Chat") {
-                ChatScreen(Modifier.fillMaxSize())
-            } else {
-                ToolWorkspaceScreen(mode = mode, modifier = Modifier.fillMaxSize())
+            when (mode) {
+                "Home" -> DashboardScreen(
+                    onToolSelected = { selectedTool -> mode = selectedTool },
+                    modifier = Modifier.fillMaxSize()
+                )
+                "AI Chat" -> ChatScreen(Modifier.fillMaxSize())
+                else -> ToolWorkspaceScreen(mode = mode, modifier = Modifier.fillMaxSize())
             }
         }
     }
