@@ -232,7 +232,7 @@ class OkHttpChatRemoteDataSourceTest {
 
             assertTrue(
                 "Coroutine cancellation must cancel the exact underlying OkHttp call",
-                observedCall.get()?.isCanceled == true
+                observedCall.get()?.isCanceled() == true
             )
         } finally {
             server.shutdown()
