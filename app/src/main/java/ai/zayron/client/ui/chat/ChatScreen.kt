@@ -24,7 +24,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import ai.zayron.client.AiServiceConfig
 
 private val ChatPurple = Color(0xFF5146D8)
 
@@ -37,6 +36,14 @@ fun ChatScreen(
     var confirmClear by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val messages = chatViewModel.messages
+
+    val sendDraft = {
+        val message = draft.trim()
+        if (message.isNotEmpty()) {
+            chatViewModel.sendMessage(message)
+            draft = ""
+        }
+    }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
@@ -70,8 +77,7 @@ fun ChatScreen(
             Column(Modifier.weight(1f)) {
                 Text("AI Chat", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    if (AiServiceConfig.isConfigured) "Backend address configured"
-                    else "Private workspace preview",
+                    "Private workspace preview",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -163,10 +169,7 @@ fun ChatScreen(
                     placeholder = { Text("Message Zayron AI...") },
                     maxLines = 5,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = {
-                        chatViewModel.sendMessage(draft)
-                        draft = ""
-                    }),
+                    keyboardActions = KeyboardActions(onSend = { sendDraft() }),
                     colors = OutlinedTextFieldDefaults.colors(
                         unfocusedBorderColor = Color.Transparent,
                         focusedBorderColor = Color.Transparent,
@@ -176,10 +179,7 @@ fun ChatScreen(
                 )
                 Spacer(Modifier.width(4.dp))
                 IconButton(
-                    onClick = {
-                        chatViewModel.sendMessage(draft)
-                        draft = ""
-                    },
+                    onClick = { sendDraft() },
                     enabled = draft.isNotBlank(),
                     modifier = Modifier.size(46.dp).clip(CircleShape).background(
                         if (draft.isNotBlank()) ChatPurple else ChatPurple.copy(alpha = 0.35f)
