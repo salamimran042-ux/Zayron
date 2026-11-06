@@ -76,8 +76,9 @@ class ChatViewModel(
         // or a failed attempt must never be uploaded as hidden conversation context.
         val requestMessages = chatMessagesForRemoteRequest(messages.toList(), userMessage)
 
+        _isSending.value = true
         sendJob = viewModelScope.launch {
-            _isSending.value = true
+            try {
             val assistantId = UUID.randomUUID().toString()
             val events = Channel<ChatStreamEvent>(Channel.UNLIMITED)
             val eventCollector = launch {
@@ -145,7 +146,29 @@ class ChatViewModel(
 
             _serviceMessage.value = ApiErrorMapper.userMessage(result)
             persistMessages()
-            _isSending.value = false
+            } finally {
+                // Cancellation must never leave the composer permanently locked or
+                // make an interrupted message look successfully delivered.
+                val pendingUserIndex = messages.indexOfFirst {
+                    it.id == userMessage.id && it.deliveryState == DeliveryState.PENDING
+                }
+                if (pendingUserIndex >= 0) {
+                    messages[pendingUserIndex] = messages[pendingUserIndex].copy(
+                        deliveryState = DeliveryState.LOCAL_ONLY
+                    )
+                }
+                val pendingAssistantIndex = messages.indexOfFirst {
+                    it.id == assistantId && it.deliveryState == DeliveryState.PENDING
+                }
+                if (pendingAssistantIndex >= 0) {
+                    messages[pendingAssistantIndex] = messages[pendingAssistantIndex].copy(
+                        deliveryState = DeliveryState.FAILED
+                    )
+                }
+                persistMessages()
+                _isSending.value = false
+                sendJob = null
+            }
         }
     }
 
