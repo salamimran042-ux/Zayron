@@ -79,6 +79,9 @@ jobs:
         with:
           gradle-version: "8.4"
 
+      - name: Prebuild app and instrumentation APKs before emulator startup
+        run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+
       - name: Run Android Keystore tests on lightweight emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -97,7 +100,17 @@ jobs:
             adb shell getprop ro.build.version.sdk
             adb shell pm list packages >/dev/null
             adb devices -l
-            gradle --no-daemon :app:connectedDebugAndroidTest
+            if ! gradle --no-daemon :app:connectedDebugAndroidTest -x :app:assembleDebug -x :app:assembleDebugAndroidTest; then
+              echo "Instrumentation failed; collecting emulator health diagnostics before shutdown."
+              adb devices -l || true
+              adb shell getprop sys.boot_completed || true
+              adb shell getprop ro.build.version.sdk || true
+              adb shell df -h /data || true
+              adb shell dumpsys package || true
+              adb logcat -b crash -d -t 3000 || true
+              adb logcat -b system -d -t 3000 || true
+              exit 1
+            fi
 
   verify-project-integrity:
     name: Zayron project identity and source checks
