@@ -83,7 +83,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           emulator-boot-timeout: 900
-          script: gradle --no-daemon :app:connectedDebugAndroidTest
+          script: ready=0; for i in $(seq 1 30); do if adb shell settings get global device_provisioned >/dev/null 2>&1; then ready=1; break; fi; sleep 5; done; test "$ready" -eq 1; gradle --no-daemon :app:connectedDebugAndroidTest
 
   verify-project-integrity:
     name: Zayron project identity and source checks
