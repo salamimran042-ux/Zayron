@@ -27,10 +27,17 @@ internal fun resolveBackendBaseUrl(configuredUrl: String): HttpUrl? {
  */
 internal fun resolveApiUrl(baseUrl: HttpUrl?, relativePath: String): HttpUrl? {
     baseUrl ?: return null
-    val path = relativePath.trim().trimStart('/')
+    val rawPath = relativePath.trim()
 
-    if (path.isEmpty() || "://" in path || path.startsWith("//") ||
-        '?' in path || '#' in path || '\\' in path ||
+    // Check the unmodified input before removing a permitted single leading slash.
+    // Otherwise a network-path reference (//host/path) could be normalized into a
+    // harmless-looking relative path and bypass this validation.
+    if (rawPath.isEmpty() || rawPath.startsWith("//")) return null
+
+    val path = rawPath.removePrefix("/")
+    if (path.isEmpty() || "://" in path ||
+        '?' in path || '#' in path || '\\' in path || '%' in path ||
+        path.any { it.isISOControl() } ||
         path.split('/').any { it == "." || it == ".." }
     ) {
         return null
