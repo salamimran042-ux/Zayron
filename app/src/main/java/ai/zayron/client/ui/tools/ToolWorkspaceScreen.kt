@@ -100,32 +100,7 @@ fun ToolWorkspaceScreen(
                 ) { Text("Generation service not connected") }
             }
 
-            "Image Editing" -> {
-                ToolHeading(
-                    icon = { Icon(Icons.Default.Image, null, tint = ToolPurple) },
-                    title = "AI Inpaint & Eraser",
-                    subtitle = "Choose a photo to prepare it for editing."
-                )
-                SelectionCard(
-                    title = if (selectedImage == null) "No photo selected" else "Photo selected",
-                    detail = "The photo is selected locally. Mask painting and AI processing will be added with the editing engine.",
-                    buttonText = "Choose photo",
-                    onClear = { selectedImage = null },
-                    onClick = { imagePicker.launch("image/*") }
-                )
-                OutlinedTextField(
-                    value = prompt,
-                    onValueChange = { prompt = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Editing instruction (optional)") },
-                    placeholder = { Text("Describe what should be removed or changed…") },
-                    minLines = 2
-                )
-                ServiceNotice("No image is uploaded or modified in this preview. The inpainting and eraser engine is not connected.")
-                Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-                    Text("Editing service not connected")
-                }
-            }
+            "Image Editing" -> ImageEditingScreen(Modifier.fillMaxSize())
 
             "Document AI" -> {
                 ToolHeading(
