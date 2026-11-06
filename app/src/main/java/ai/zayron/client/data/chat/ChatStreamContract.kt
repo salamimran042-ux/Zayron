@@ -1,6 +1,8 @@
 package ai.zayron.client.data.chat
 
 import ai.zayron.client.ui.chat.ChatMessage
+import ai.zayron.client.ui.chat.ChatRole
+import ai.zayron.client.ui.chat.DeliveryState
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -15,6 +17,16 @@ data class ChatStreamRequest(val requestId: String, val conversationId: String?,
             .put("conversationId", conversationId ?: JSONObject.NULL)
             .put("messages", items).toString()
     }
+}
+
+
+/** Builds the only conversation context allowed to leave the device. */
+fun chatMessagesForRemoteRequest(
+    history: List<ChatMessage>,
+    currentUserMessage: ChatMessage
+): List<ChatMessage> {
+    require(currentUserMessage.role == ChatRole.USER) { "The current chat message must be from the user." }
+    return history.filter { it.deliveryState == DeliveryState.SENT } + currentUserMessage
 }
 
 sealed class ChatStreamEvent {
