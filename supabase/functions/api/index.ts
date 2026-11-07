@@ -92,7 +92,7 @@ Deno.serve(async (request: Request) => {
 
     const response = await fetch(`${url}/auth/v1/logout`, {
       method: "POST",
-      headers: { apikey: key, authorization: `Bearer ${match[1]}` },
+      headers: { apikey: key, authorization: `Bearer ${token}` },
     });
     if (!response.ok) return json({ error: "logout_unavailable" }, 502);
     return json({ ok: true });
@@ -107,7 +107,7 @@ Deno.serve(async (request: Request) => {
 
     const userClient = createClient(url, key, {
       auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-      global: { headers: { Authorization: `Bearer ${match[1]}` } },
+      global: { headers: { Authorization: `Bearer ${token}` } },
     });
     const { data, error } = await userClient.rpc("zayron_get_my_profile");
     if (error) {
