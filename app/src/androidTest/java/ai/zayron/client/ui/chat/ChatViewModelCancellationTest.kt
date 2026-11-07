@@ -37,11 +37,16 @@ class ChatViewModelCancellationTest {
         onMainThread { viewModel.cancelCurrentRequest() }
 
         waitUntil("Composer did not unlock after cancellation") {
-            !viewModel.isSending
+            readOnMainThread { !viewModel.isSending }
         }
-        assertFalse(viewModel.isSending)
-        assertEquals(DeliveryState.LOCAL_ONLY, viewModel.messages.single().deliveryState)
-        assertTrue(viewModel.serviceMessage.orEmpty().contains("Generation stopped"))
+        assertFalse(readOnMainThread { viewModel.isSending })
+        assertEquals(
+            DeliveryState.LOCAL_ONLY,
+            readOnMainThread { viewModel.messages.single().deliveryState }
+        )
+        assertTrue(
+            readOnMainThread { viewModel.serviceMessage.orEmpty().contains("Generation stopped") }
+        )
     }
 
     @Test
@@ -54,8 +59,8 @@ class ChatViewModelCancellationTest {
         assertNotNull("First remote request did not start", remote.awaitRequest())
 
         onMainThread { viewModel.clearConversation() }
-        assertTrue(viewModel.messages.isEmpty())
-        assertFalse(viewModel.isSending)
+        assertTrue(readOnMainThread { viewModel.messages.isEmpty() })
+        assertFalse(readOnMainThread { viewModel.isSending })
 
         onMainThread { viewModel.sendMessage("New conversation") }
         val newRequest = remote.awaitRequest()
@@ -63,15 +68,20 @@ class ChatViewModelCancellationTest {
 
         // Completing the new request must leave its state authoritative even if
         // the cancelled request is still unwinding its cleanup path.
-        assertTrue("New request was incorrectly unlocked", viewModel.isSending)
-        assertEquals(1, viewModel.messages.size)
-        assertEquals("New conversation", viewModel.messages.single().text)
+        assertTrue("New request was incorrectly unlocked", readOnMainThread { viewModel.isSending })
+        assertEquals(1, readOnMainThread { viewModel.messages.size })
+        assertEquals("New conversation", readOnMainThread { viewModel.messages.single().text })
 
         newRequest!!.complete(NetworkResult.Success(Unit, 200))
-        waitUntil("New request did not finish") { !viewModel.isSending }
+        waitUntil("New request did not finish") {
+            readOnMainThread { !viewModel.isSending }
+        }
 
-        assertEquals(DeliveryState.SENT, viewModel.messages.single().deliveryState)
-        assertEquals("New conversation", viewModel.messages.single().text)
+        assertEquals(
+            DeliveryState.SENT,
+            readOnMainThread { viewModel.messages.single().deliveryState }
+        )
+        assertEquals("New conversation", readOnMainThread { viewModel.messages.single().text })
     }
 
     private fun newViewModel(
@@ -83,7 +93,20 @@ class ChatViewModelCancellationTest {
         return ChatViewModel(application, repository, remote)
     }
 
-    private fun onMainThread(action: () -> Unit) {\n        InstrumentationRegistry.getInstrumentation().runOnMainSync(action)\n    }\n\n    private fun waitUntil(message: String, condition: () -> Boolean) {
+    private fun onMainThread(action: () -> Unit) {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(action)
+    }
+
+    private fun <T> readOnMainThread(action: () -> T): T {
+        var result: T? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            result = action()
+        }
+        @Suppress("UNCHECKED_CAST")
+        return result as T
+    }
+
+    private fun waitUntil(message: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (!condition() && System.nanoTime() < deadline) {
             Thread.sleep(10)
