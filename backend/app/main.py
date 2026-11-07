@@ -1,13 +1,31 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
+from app.db.pool import DatabaseRuntime
 
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    database = DatabaseRuntime()
+    await database.open(settings)
+    application.state.database = database
+    try:
+        yield
+    finally:
+        await database.close()
+
 
 app = FastAPI(
     title="Zayron AI API",
     description="The server-side foundation for Zayron AI.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 
@@ -19,6 +37,25 @@ async def health() -> dict[str, str]:
         "service": "zayron-api",
         "version": app.version,
     }
+
+
+@app.get("/ready", tags=["operations"])
+async def readiness(request: Request) -> JSONResponse:
+    """Report readiness only after a real database ping succeeds."""
+    database: DatabaseRuntime = request.app.state.database
+    try:
+        ready = await database.ping()
+    except Exception:
+        ready = False
+    if not ready:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "database": "unavailable"},
+        )
+    return JSONResponse(
+        status_code=200,
+        content={"status": "ready", "database": "reachable"},
+    )
 
 
 @app.get("/config/status", tags=["operations"])
