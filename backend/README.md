@@ -45,7 +45,7 @@ The job API currently creates and tracks queued work only. A worker, queue-claim
 
 ## Authentication foundation
 
-- `POST /api/v1/auth/login` exchanges email/password with Supabase Auth over HTTPS.
+- `POST /api/v1/auth/register` creates an account through Supabase Auth; email confirmation remains provider-controlled.\n- `POST /api/v1/auth/password-reset` requests a reset email with a generic response to avoid account enumeration.\n- `POST /api/v1/auth/login` exchanges email/password with Supabase Auth over HTTPS.
 - `POST /api/v1/auth/refresh` exchanges a refresh token and returns the provider-rotated token pair.
 - `POST /api/v1/auth/logout` revokes the current provider session using a Bearer access token.
 - `GET /api/v1/me` verifies JWT signature, issuer, audience and required claims before returning the subject.

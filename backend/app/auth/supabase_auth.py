@@ -103,6 +103,21 @@ class SupabaseAuthClient:
         )
         return self._parse_tokens(payload)
 
+    async def sign_up(self, email: str, password: str, display_name: str | None = None) -> dict[str, Any]:
+        metadata = {"full_name": display_name.strip()} if display_name and display_name.strip() else {}
+        payload = await self._post("signup", json={"email": email, "password": password, "data": metadata})
+        user = payload.get("user") if isinstance(payload.get("user"), dict) else payload
+        user_id, user_email = user.get("id"), user.get("email")
+        if not isinstance(user_id, str) or not user_id or not isinstance(user_email, str):
+            raise SupabaseAuthError(502)
+        has_session = bool(payload.get("access_token")) and bool(payload.get("refresh_token"))
+        session = self._parse_tokens(payload).response() if has_session else None
+        return {"confirmation_required": session is None,
+                "user": {"id": user_id, "email": user_email}, "session": session}
+
+    async def send_password_reset(self, email: str) -> None:
+        await self._post("recover", json={"email": email})
+
     async def refresh(self, refresh_token: str) -> AuthTokens:
         payload = await self._post(
             "token",

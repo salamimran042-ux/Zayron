@@ -16,6 +16,14 @@ class LoginRequest(BaseModel):
 class RefreshRequest(BaseModel):
     refresh_token: SecretStr = Field(min_length=1, max_length=16_384)
 
+class RegistrationRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: SecretStr = Field(min_length=8, max_length=1024)
+    display_name: str | None = Field(default=None, max_length=80)
+
+class PasswordResetRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
 def _auth_client(request: Request) -> SupabaseAuthClient:
     client = getattr(request.app.state, "supabase_auth", None)
     if client is None:
@@ -29,6 +37,34 @@ def _provider_error(exc: SupabaseAuthError, *, refreshing: bool = False) -> HTTP
     if exc.status_code == 429:
         return HTTPException(429, detail={"code": "RATE_LIMITED"})
     return HTTPException(503, detail={"code": "AUTH_SERVICE_UNAVAILABLE"})
+
+
+@router.post("/auth/register", status_code=202)
+async def register(body: RegistrationRequest, request: Request) -> dict:
+    """Create an account; Supabase controls email verification and session issuance."""
+    email = body.email.strip()
+    if "@" not in email or any(character.isspace() for character in email):
+        raise HTTPException(422, detail={"code": "INVALID_EMAIL"})
+    try:
+        return await _auth_client(request).sign_up(
+            email, body.password.get_secret_value(), body.display_name
+        )
+    except SupabaseAuthError as exc:
+        raise _provider_error(exc) from exc
+
+
+@router.post("/auth/password-reset", status_code=202)
+async def password_reset(body: PasswordResetRequest, request: Request) -> dict:
+    """Request a reset email without revealing whether the account exists."""
+    email = body.email.strip()
+    if "@" not in email or any(character.isspace() for character in email):
+        raise HTTPException(422, detail={"code": "INVALID_EMAIL"})
+    try:
+        await _auth_client(request).send_password_reset(email)
+    except SupabaseAuthError as exc:
+        raise _provider_error(exc) from exc
+    return {"status": "accepted"}
+
 
 @router.post("/auth/login")
 async def login(body: LoginRequest, request: Request) -> dict:

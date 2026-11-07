@@ -16,7 +16,7 @@ This document defines the secure integration boundary for the Android client. So
 
 | Route | Behavior | Source status |
 |---|---|---|
-| `POST /api/v1/auth/login` | Exchange email/password with Supabase Auth; return access token, refresh token, absolute expiry and minimal profile | Implemented; mocked tests |
+| `POST /api/v1/auth/register` | Create an account; return confirmation state and optional session | Implemented; mocked tests |\n| `POST /api/v1/auth/password-reset` | Request a reset email with a generic accepted response | Implemented; mocked tests |\n| `POST /api/v1/auth/login` | Exchange email/password with Supabase Auth; return access token, refresh token, absolute expiry and minimal profile | Implemented; mocked tests |
 | `POST /api/v1/auth/refresh` | Exchange refresh token and return provider-rotated token pair | Implemented; mocked tests |
 | `POST /api/v1/auth/logout` | Revoke current provider session using Bearer access token | Implemented; mocked tests |
 | `GET /api/v1/me` | Verify Supabase JWT and return verified subject | Implemented; tests |
@@ -45,7 +45,7 @@ These routes require PostgreSQL and the explicit migrations. They are source imp
 
 ## Remaining proposed API surface
 
-- `POST /api/v1/auth/register`: account creation and email verification.
+- `POST /api/v1/auth/verify`: provider-managed email verification callback/confirmation handling.
 - `POST /api/v1/chat/stream`: authenticated AI streaming.
 - `POST /api/v1/uploads`: scoped upload authorization.
 - `POST /api/v1/video/image-to-video`: queued video generation.

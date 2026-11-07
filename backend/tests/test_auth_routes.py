@@ -141,3 +141,44 @@ def test_auth_provider_errors_map_to_safe_codes():
     assert login.json()["detail"]["code"] == "INVALID_CREDENTIALS"
     assert refresh.status_code == 401
     assert refresh.json()["detail"]["code"] == "SESSION_EXPIRED"
+
+
+def test_registration_returns_confirmation_state_without_echoing_password():
+    class RegistrationAuth(FakeSupabaseAuth):
+        async def sign_up(self, email, password, display_name=None):
+            self.calls.append(("register", email, password, display_name))
+            return {"confirmation_required": True,
+                    "user": {"id": "user-123", "email": email}, "session": None}
+    fake = RegistrationAuth()
+    with TestClient(app) as client:
+        app.state.supabase_auth = fake
+        response = client.post("/api/v1/auth/register", json={
+            "email": "new@example.com", "password": "safe-password",
+            "display_name": "New User"})
+    assert response.status_code == 202
+    assert response.json()["confirmation_required"] is True
+    assert "safe-password" not in response.text
+
+
+def test_registration_rejects_invalid_email_and_short_password():
+    with TestClient(app) as client:
+        invalid_email = client.post("/api/v1/auth/register", json={
+            "email": "not-an-email", "password": "safe-password"})
+        short_password = client.post("/api/v1/auth/register", json={
+            "email": "new@example.com", "password": "short"})
+    assert invalid_email.status_code == 422
+    assert short_password.status_code == 422
+
+
+def test_password_reset_returns_generic_accepted_response():
+    class RecoveryAuth(FakeSupabaseAuth):
+        async def send_password_reset(self, email):
+            self.calls.append(("reset", email))
+    fake = RecoveryAuth()
+    with TestClient(app) as client:
+        app.state.supabase_auth = fake
+        response = client.post("/api/v1/auth/password-reset",
+                               json={"email": "user@example.com"})
+    assert response.status_code == 202
+    assert response.json() == {"status": "accepted"}
+    assert fake.calls == [("reset", "user@example.com")]
