@@ -94,14 +94,7 @@ jobs:
           emulator-boot-timeout: 1800
           script: |
             adb wait-for-device
-            for attempt in $(seq 1 12); do
-              if adb shell cmd package list packages >/dev/null 2>&1; then
-                echo "Android package manager is responding."
-                break
-              fi
-              echo "Waiting for Android package manager (attempt $attempt/12)..."
-              sleep 5
-            done
+            adb shell 'i=0; until cmd package list packages >/dev/null 2>&1; do i=$((i+1)); [ "$i" -lt 24 ] || exit 1; sleep 5; done'
             adb shell cmd package list packages >/dev/null
             gradle --no-daemon :app:connectedDebugAndroidTest -x :app:assembleDebug -x :app:assembleDebugAndroidTest
 
