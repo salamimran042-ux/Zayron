@@ -10,9 +10,11 @@ def test_settings_have_safe_development_defaults() -> None:
     assert settings.environment == "development"
     assert settings.log_level == "INFO"
     assert settings.database_url is None
+    assert settings.migration_database_url is None
     assert settings.supabase_url is None
     assert settings.integration_status() == {
         "database": "not_configured",
+        "migration_database": "not_configured",
         "supabase_url": "not_configured",
         "supabase_publishable_key": "not_configured",
         "supabase_secret_key": "not_configured",
@@ -26,6 +28,7 @@ def test_settings_have_safe_development_defaults() -> None:
 def test_settings_read_environment_without_exposing_secrets(monkeypatch) -> None:
     monkeypatch.setenv("ZAYRON_ENVIRONMENT", "test")
     monkeypatch.setenv("ZAYRON_DATABASE_URL", "postgresql://example.invalid/db")
+    monkeypatch.setenv("ZAYRON_MIGRATION_DATABASE_URL", "postgresql://admin.invalid/db")
     monkeypatch.setenv("ZAYRON_SUPABASE_SECRET_KEY", "test-secret-value")
     monkeypatch.setenv("ZAYRON_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test")
 
@@ -34,20 +37,24 @@ def test_settings_read_environment_without_exposing_secrets(monkeypatch) -> None
     assert settings.environment == "test"
     assert settings.database_url is not None
     assert settings.database_url.get_secret_value() == "postgresql://example.invalid/db"
+    assert settings.migration_database_url is not None
+    assert settings.migration_database_url.get_secret_value() == "postgresql://admin.invalid/db"
     assert settings.supabase_secret_key is not None
     assert settings.supabase_publishable_key is not None
     assert settings.integration_status()["database"] == "configured"
+    assert settings.integration_status()["migration_database"] == "configured"
     assert settings.integration_status()["supabase_secret_key"] == "configured"
     assert settings.integration_status()["supabase_publishable_key"] == "configured"
     assert "test-secret-value" not in str(settings)
     assert "test-secret-value" not in str(settings.integration_status())
 
 
-def test_legacy_supabase_keys_remain_backward_compatible(monkeypatch) -> None:
-    monkeypatch.setenv("ZAYRON_SUPABASE_ANON_KEY", "legacy-public-key")
-    monkeypatch.setenv("ZAYRON_SUPABASE_SERVICE_ROLE_KEY", "legacy-secret-key")
-
-    settings = Settings(_env_file=None)
+def test_legacy_supabase_keys_remain_backward_compatible() -> None:
+    settings = Settings(
+        supabase_anon_key="legacy-public-key",
+        supabase_service_role_key="legacy-secret-key",
+        _env_file=None,
+    )
 
     assert settings.effective_supabase_publishable_key is not None
     assert settings.effective_supabase_publishable_key.get_secret_value() == "legacy-public-key"
