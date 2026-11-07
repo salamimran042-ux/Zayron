@@ -31,10 +31,10 @@ class ChatViewModelCancellationTest {
         val repository = InMemoryChatRepository()
         val viewModel = newViewModel(repository, remote)
 
-        viewModel.sendMessage("Please generate a reply")
+        onMainThread { viewModel.sendMessage("Please generate a reply") }
         assertNotNull("Remote request did not start", remote.awaitRequest())
 
-        viewModel.cancelCurrentRequest()
+        onMainThread { viewModel.cancelCurrentRequest() }
 
         waitUntil("Composer did not unlock after cancellation") {
             !viewModel.isSending
@@ -50,14 +50,14 @@ class ChatViewModelCancellationTest {
         val repository = InMemoryChatRepository()
         val viewModel = newViewModel(repository, remote)
 
-        viewModel.sendMessage("Old conversation")
+        onMainThread { viewModel.sendMessage("Old conversation") }
         assertNotNull("First remote request did not start", remote.awaitRequest())
 
-        viewModel.clearConversation()
+        onMainThread { viewModel.clearConversation() }
         assertTrue(viewModel.messages.isEmpty())
         assertFalse(viewModel.isSending)
 
-        viewModel.sendMessage("New conversation")
+        onMainThread { viewModel.sendMessage("New conversation") }
         val newRequest = remote.awaitRequest()
         assertNotNull("New remote request did not start", newRequest)
 
@@ -83,7 +83,7 @@ class ChatViewModelCancellationTest {
         return ChatViewModel(application, repository, remote)
     }
 
-    private fun waitUntil(message: String, condition: () -> Boolean) {
+    private fun onMainThread(action: () -> Unit) {\n        InstrumentationRegistry.getInstrumentation().runOnMainSync(action)\n    }\n\n    private fun waitUntil(message: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (!condition() && System.nanoTime() < deadline) {
             Thread.sleep(10)
