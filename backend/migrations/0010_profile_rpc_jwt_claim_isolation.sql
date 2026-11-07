@@ -15,6 +15,10 @@ CREATE POLICY zayron_profile_rpc_insert_own ON public.user_profiles
         user_id = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
     );
 
+GRANT CREATE ON SCHEMA public TO zayron_profile_rpc_owner;
+GRANT zayron_profile_rpc_owner TO postgres;
+SET LOCAL ROLE zayron_profile_rpc_owner;
+
 CREATE OR REPLACE FUNCTION public.zayron_get_my_profile()
 RETURNS TABLE (
     user_id uuid,
@@ -52,9 +56,8 @@ BEGIN
 END;
 $function$;
 
-GRANT zayron_profile_rpc_owner TO postgres;
-ALTER FUNCTION public.zayron_get_my_profile()
-    OWNER TO zayron_profile_rpc_owner;
+RESET ROLE;
+REVOKE CREATE ON SCHEMA public FROM zayron_profile_rpc_owner;
 REVOKE zayron_profile_rpc_owner FROM postgres;
 REVOKE ALL ON FUNCTION public.zayron_get_my_profile() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.zayron_get_my_profile() TO authenticated;
