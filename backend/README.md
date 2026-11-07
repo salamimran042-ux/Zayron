@@ -7,23 +7,24 @@ This folder contains the independent Python backend foundation for the existing 
 Implemented:
 - FastAPI application package
 - Process-level `GET /health` endpoint
+- Database-aware `GET /ready` endpoint that returns ready only after a real PostgreSQL ping
 - Safe `GET /config/status` endpoint that reports integration configuration presence without exposing credentials
 - Environment-based settings with secret-typed credential fields
-- Database integration boundary with a typed adapter contract and guarded database-URL access
+- Async PostgreSQL connection pool with bounded pool sizing, startup/shutdown lifecycle, and a typed adapter contract
 - Automated health and configuration tests
 - Python package metadata and development dependencies
 - Container definition for a future Cloud Run deployment
 - Separate backend CI workflow
 
 Not implemented or connected yet:
-- A live Supabase authentication or PostgreSQL connection (the database adapter contract is prepared, but no driver or credentials are connected)
+- Supabase authentication and a live PostgreSQL connection in this repository environment (the async PostgreSQL adapter is implemented, but no database credentials or hosted database are connected)
 - Private file storage
 - AI provider integrations
 - Cloud Tasks or background workers
 - Credits, billing, or entitlement enforcement
 - Production deployment
 
-`/health` confirms only that the API process responds. `/config/status` reports whether integration settings are present; it does not test connectivity or claim that a service is working. The database module defines the adapter contract and keeps secret URL access at the driver boundary, but it does not open a connection or claim database readiness.
+`/health` confirms only that the API process responds. `/ready` returns success only after a real `SELECT 1` database round-trip; without configured and reachable PostgreSQL it returns HTTP 503. `/config/status` reports whether integration settings are present without exposing credentials. The API opens a bounded async PostgreSQL pool only when a database URL is supplied and closes it during shutdown.
 
 ## Configuration
 
@@ -41,7 +42,7 @@ python -m pip install -e ".[dev]"
 uvicorn app.main:app --reload
 ```
 
-Inspect `http://127.0.0.1:8000/health` and `http://127.0.0.1:8000/config/status`.
+Inspect `http://127.0.0.1:8000/health`, `http://127.0.0.1:8000/ready`, and `http://127.0.0.1:8000/config/status`. Without a configured database, `/ready` correctly returns HTTP 503.
 
 ## Run tests
 
