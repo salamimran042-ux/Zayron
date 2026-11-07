@@ -1,0 +1,75 @@
+name: Build signed Zayron AI installation APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-apk:
+    name: Build and verify signed release APK
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ZAYRON_RELEASE_KEYSTORE_BASE64: ${{ secrets.ZAYRON_RELEASE_KEYSTORE_BASE64 }}
+      ZAYRON_RELEASE_STORE_PASSWORD: ${{ secrets.ZAYRON_RELEASE_STORE_PASSWORD }}
+      ZAYRON_RELEASE_KEY_ALIAS: ${{ secrets.ZAYRON_RELEASE_KEY_ALIAS }}
+      ZAYRON_RELEASE_KEY_PASSWORD: ${{ secrets.ZAYRON_RELEASE_KEY_PASSWORD }}
+    steps:
+      - name: Check out committed source
+        uses: actions/checkout@v7
+
+      - name: Confirm permanent signing secrets are configured
+        run: |
+          for name in ZAYRON_RELEASE_KEYSTORE_BASE64 ZAYRON_RELEASE_STORE_PASSWORD ZAYRON_RELEASE_KEY_ALIAS ZAYRON_RELEASE_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing GitHub Actions secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Decode protected release keystore
+        run: |
+          echo "$ZAYRON_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/zayron-release.jks"
+          test -s "$RUNNER_TEMP/zayron-release.jks"
+          echo "ZAYRON_RELEASE_STORE_FILE=$RUNNER_TEMP/zayron-release.jks" >> "$GITHUB_ENV"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure Android SDK
+        run: |
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Set up Gradle 8.4
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "8.4"
+
+      - name: Run JVM unit tests
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build signed release APK
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify APK signature and application identity
+        run: |
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          apksigner verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | grep -F "package: name='ai.zayron.client'"
+
+      - name: Upload verified installation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zayron-AI-Release-APK
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 90
