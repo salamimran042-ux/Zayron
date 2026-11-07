@@ -52,7 +52,9 @@ BEGIN
 END;
 $function$;
 
+GRANT zayron_profile_rpc_owner TO postgres;
 ALTER FUNCTION public.zayron_get_my_profile()
     OWNER TO zayron_profile_rpc_owner;
+REVOKE zayron_profile_rpc_owner FROM postgres;
 REVOKE ALL ON FUNCTION public.zayron_get_my_profile() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.zayron_get_my_profile() TO authenticated;
