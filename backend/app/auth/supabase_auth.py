@@ -1,15 +1,21 @@
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 import time
+
 import httpx
+
 from app.core.config import Settings
+
 
 class SupabaseAuthError(Exception):
     """Provider failure without retaining credentials or response bodies."""
+
     def __init__(self, status_code: int, provider_code: str | None = None) -> None:
         self.status_code = status_code
         self.provider_code = provider_code
         super().__init__("Supabase Auth request failed")
+
 
 @dataclass(frozen=True)
 class AuthTokens:
@@ -21,44 +27,98 @@ class AuthTokens:
     display_name: str | None
 
     def response(self) -> dict[str, Any]:
-        return {"access_token": self.access_token, "refresh_token": self.refresh_token,
-                "expires_at": self.expires_at,
-                "user": {"id": self.user_id, "email": self.email, "display_name": self.display_name}}
+        return {
+            "access_token": self.access_token,
+            "refresh_token": self.refresh_token,
+            "expires_at": self.expires_at,
+            "user": {
+                "id": self.user_id,
+                "email": self.email,
+                "display_name": self.display_name,
+            },
+        }
+
 
 class SupabaseAuthClient:
     """Server-side adapter for Supabase Auth password, refresh and logout flows."""
-    def __init__(self, supabase_url: str, anon_key: str,
-                 *, transport: httpx.AsyncBaseTransport | None = None) -> None:
+
+    def __init__(
+        self,
+        supabase_url: str,
+        anon_key: str,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        base_url = self._validated_base_url(supabase_url)
         self._client = httpx.AsyncClient(
-            base_url=f"{supabase_url.rstrip('/')}/auth/v1/",
+            base_url=base_url,
             headers={"apikey": anon_key, "Accept": "application/json"},
-            timeout=httpx.Timeout(12.0, connect=5.0), transport=transport)
+            timeout=httpx.Timeout(12.0, connect=5.0),
+            transport=transport,
+        )
+
+    @staticmethod
+    def _validated_base_url(supabase_url: str) -> str:
+        """Accept only a clean HTTPS origin (HTTP is limited to local development)."""
+        if not isinstance(supabase_url, str) or not supabase_url.strip():
+            raise ValueError("Supabase URL must be a clean HTTPS origin")
+        parsed = urlparse(supabase_url.strip())
+        try:
+            parsed.port
+        except ValueError as exc:
+            raise ValueError("Supabase URL contains an invalid port") from exc
+        local_http = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+        if (
+            not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or (parsed.scheme != "https" and not (local_http and parsed.scheme == "http"))
+        ):
+            raise ValueError(
+                "Supabase URL must be a clean HTTPS origin "
+                "(HTTP is allowed only for localhost)"
+            )
+        return f"{parsed.scheme}://{parsed.netloc}/auth/v1/"
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "SupabaseAuthClient | None":
         if not settings.supabase_url or not settings.supabase_anon_key:
             return None
-        return cls(settings.supabase_url, settings.supabase_anon_key.get_secret_value())
+        return cls(
+            settings.supabase_url,
+            settings.supabase_anon_key.get_secret_value(),
+        )
 
     async def close(self) -> None:
         await self._client.aclose()
 
     async def sign_in(self, email: str, password: str) -> AuthTokens:
-        payload = await self._post("token", params={"grant_type": "password"},
-                                   json={"email": email, "password": password})
+        payload = await self._post(
+            "token",
+            params={"grant_type": "password"},
+            json={"email": email, "password": password},
+        )
         return self._parse_tokens(payload)
 
     async def refresh(self, refresh_token: str) -> AuthTokens:
-        payload = await self._post("token", params={"grant_type": "refresh_token"},
-                                   json={"refresh_token": refresh_token})
+        payload = await self._post(
+            "token",
+            params={"grant_type": "refresh_token"},
+            json={"refresh_token": refresh_token},
+        )
         return self._parse_tokens(payload)
 
     async def sign_out(self, access_token: str) -> None:
         if not access_token or len(access_token) > 16_384:
             raise SupabaseAuthError(401)
         try:
-            response = await self._client.post("logout",
-                headers={"Authorization": f"Bearer {access_token}"})
+            response = await self._client.post(
+                "logout",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
         except httpx.HTTPError as exc:
             raise SupabaseAuthError(503) from exc
         if response.status_code >= 400:
@@ -89,7 +149,11 @@ class SupabaseAuthClient:
 
     @staticmethod
     def _parse_tokens(payload: dict[str, Any]) -> AuthTokens:
-        access, refresh, user = payload.get("access_token"), payload.get("refresh_token"), payload.get("user")
+        access, refresh, user = (
+            payload.get("access_token"),
+            payload.get("refresh_token"),
+            payload.get("user"),
+        )
         if not isinstance(access, str) or not access or len(access) > 16_384:
             raise SupabaseAuthError(502)
         if not isinstance(refresh, str) or not refresh or len(refresh) > 16_384:
@@ -109,6 +173,10 @@ class SupabaseAuthClient:
         else:
             raise SupabaseAuthError(502)
         metadata = user.get("user_metadata")
-        name = metadata.get("full_name") or metadata.get("name") if isinstance(metadata, dict) else None
+        name = (
+            metadata.get("full_name") or metadata.get("name")
+            if isinstance(metadata, dict)
+            else None
+        )
         display_name = name.strip()[:120] if isinstance(name, str) and name.strip() else None
         return AuthTokens(access, refresh, expires_at, user_id, email, display_name)
