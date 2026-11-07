@@ -7,12 +7,14 @@ FastAPI service foundation for the Zayron AI Android application.
 Supply values through protected environment variables or a secret manager. Never commit real credentials.
 
 - `ZAYRON_ENVIRONMENT`: environment label.
-- `ZAYRON_DATABASE_URL`: PostgreSQL connection string.\n- `ZAYRON_WORKER_TOKEN`: long random secret used only by trusted job workers; keep it in a server-side secret manager.
+- `ZAYRON_DATABASE_URL`: PostgreSQL connection string.
+- `ZAYRON_WORKER_TOKEN`: long random secret used only by trusted job workers; keep it in a server-side secret manager.
 - `ZAYRON_SUPABASE_URL`: clean HTTPS Supabase project origin.
-- `ZAYRON_SUPABASE_ANON_KEY`: Supabase public anon key used by the server-side Auth client.
-- `ZAYRON_SUPABASE_SERVICE_ROLE_KEY`: reserved for narrowly scoped server administration; never send it to Android.
+- `ZAYRON_SUPABASE_PUBLISHABLE_KEY`: current Supabase publishable API key used by the server-side Auth adapter.
+- `ZAYRON_SUPABASE_SECRET_KEY`: optional server-only Supabase secret key for future narrowly scoped administrative operations. It is not required for the current Auth flows and must never be sent to Android.
+- `ZAYRON_SUPABASE_ANON_KEY` and `ZAYRON_SUPABASE_SERVICE_ROLE_KEY`: legacy compatibility variables only. Prefer the current publishable/secret key names for new projects.
 
-Configuration status reveals presence only, never secret values.
+The Auth adapter sends the publishable key in the Supabase `apikey` header. It does not use the secret key for login, registration, refresh, or logout. Configuration status reveals presence only, never secret values. Do not put any Supabase secret key, database password, or worker token in the Android app or public repository.
 
 ## Database platform foundation
 
@@ -45,11 +47,13 @@ The job API includes a worker control plane: workers authenticate with a separat
 
 ## Authentication foundation
 
-- `POST /api/v1/auth/register` creates an account through Supabase Auth; email confirmation remains provider-controlled.\n- `POST /api/v1/auth/password-reset` requests a reset email with a generic response to avoid account enumeration.\n- `POST /api/v1/auth/login` exchanges email/password with Supabase Auth over HTTPS.
+- `POST /api/v1/auth/register` creates an account through Supabase Auth; email confirmation remains provider-controlled.
+- `POST /api/v1/auth/password-reset` requests a reset email with a generic response to avoid account enumeration.
+- `POST /api/v1/auth/login` exchanges email/password with Supabase Auth over HTTPS.
 - `POST /api/v1/auth/refresh` exchanges a refresh token and returns the provider-rotated token pair.
 - `POST /api/v1/auth/logout` revokes the current provider session using a Bearer access token.
 - `GET /api/v1/me` verifies JWT signature, issuer, audience and required claims before returning the subject.
 
 Supabase Auth owns credential validation, refresh rotation and session revocation. The backend does not persist passwords or refresh tokens. Android must store token material only in its Android Keystore-backed encrypted store. Provider response bodies and credentials are not exposed in API errors. Supabase project-side rate limits must be reviewed before production.
 
-These routes are implemented in source and tested with mocked provider responses. They are not live until a real Supabase project is configured and the backend is deployed.
+These routes are implemented in source and tested with mocked provider responses. They are not live until a real Supabase project is configured and the backend is deployed. The current key names are supported while legacy anon/service-role environment names remain temporarily compatible.
