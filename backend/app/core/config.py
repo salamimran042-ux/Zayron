@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     log_level: str = "INFO"
     database_url: SecretStr | None = None
+    migration_database_url: SecretStr | None = None
     supabase_url: str | None = None
 
     # Current Supabase key format. The publishable key is used for Auth API
@@ -44,6 +45,9 @@ class Settings(BaseSettings):
         )
         return {
             "database": "configured" if self.database_url else "not_configured",
+            "migration_database": (
+                "configured" if self.migration_database_url else "not_configured"
+            ),
             "supabase_url": "configured" if self.supabase_url else "not_configured",
             "supabase_publishable_key": "configured" if publishable_configured else "not_configured",
             "supabase_secret_key": "configured" if secret_configured else "not_configured",
