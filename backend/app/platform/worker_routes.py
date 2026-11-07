@@ -61,11 +61,28 @@ async def claim_job(body: ClaimRequest, request: Request,
                     _: str = Depends(require_worker)):
     async with _pool(request).acquire() as connection:
         async with connection.transaction():
+            expired = await connection.fetch(
+                """UPDATE public.ai_jobs SET status = 'failed',
+                     error_code = 'WORKER_LEASE_EXHAUSTED', finished_at = now(),
+                     lease_owner = NULL, lease_expires_at = NULL, locked_at = NULL,
+                     updated_at = now()
+                   WHERE status = 'running' AND lease_expires_at <= now()
+                     AND attempts >= max_attempts
+                   RETURNING id, user_id"""
+            )
+            for expired_job in expired:
+                await _append_event(
+                    connection, expired_job["id"], expired_job["user_id"], "failed",
+                    {"error_code": "WORKER_LEASE_EXHAUSTED"}
+                )
             row = await connection.fetchrow(
                 """WITH candidate AS (
                      SELECT id FROM public.ai_jobs
-                     WHERE status = 'queued' AND available_at <= now()
-                       AND attempts < max_attempts
+                     WHERE (
+                       (status = 'queued' AND available_at <= now())
+                       OR (status = 'running' AND lease_expires_at <= now()
+                           AND attempts < max_attempts)
+                     )
                      ORDER BY available_at, created_at
                      FOR UPDATE SKIP LOCKED LIMIT 1
                    )

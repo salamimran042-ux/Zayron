@@ -14,6 +14,7 @@ def test_settings_have_safe_development_defaults() -> None:
         "supabase_anon_key": "not_configured",
         "supabase_service_role_key": "not_configured",
         "supabase_jwt_verification": "not_configured",
+        "worker": "not_configured",
     }
 
 
