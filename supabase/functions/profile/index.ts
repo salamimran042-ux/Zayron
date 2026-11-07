@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.116.0";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -17,6 +17,25 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function getPublishableKey(): string | null {
+  const namedKeys = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+  if (namedKeys) {
+    try {
+      const parsed = JSON.parse(namedKeys) as Record<string, string>;
+      if (typeof parsed.default === "string" && parsed.default.length > 0) {
+        return parsed.default;
+      }
+    } catch {
+      console.error("Publishable key environment is not valid JSON");
+      return null;
+    }
+  }
+
+  return Deno.env.get("SUPABASE_PUBLISHABLE_KEY")
+    ?? Deno.env.get("SUPABASE_ANON_KEY")
+    ?? null;
+}
+
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -33,9 +52,7 @@ Deno.serve(async (request: Request) => {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const apiKey =
-    Deno.env.get("SUPABASE_ANON_KEY") ??
-    Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+  const apiKey = getPublishableKey();
 
   if (!supabaseUrl || !apiKey) {
     return jsonResponse({ error: "service_not_configured" }, 503);
@@ -62,7 +79,6 @@ Deno.serve(async (request: Request) => {
   const { data, error } = await supabase.rpc("zayron_get_my_profile");
 
   if (error) {
-    // Keep provider/database details out of the public response.
     console.error("Profile RPC failed", error.code ?? "unknown");
     return jsonResponse({ error: "profile_unavailable" }, 500);
   }
