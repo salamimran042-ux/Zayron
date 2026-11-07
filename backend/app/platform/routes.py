@@ -6,10 +6,11 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from app.auth.dependencies import get_current_user
 from app.auth.token_verifier import AuthenticatedUser
+from app.db.pool import user_connection
 
 router = APIRouter(prefix="/api/v1", tags=["platform"])
 
@@ -74,10 +75,11 @@ def _row(row: Any) -> dict[str, Any]:
 @router.get("/profile")
 async def get_profile(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
     user_id = _identity(user)
-    row = await _pool(request).fetchrow(
-        """SELECT user_id, display_name, locale, timezone, created_at, updated_at
-           FROM public.user_profiles WHERE user_id = $1""", user_id
-    )
+    async with user_connection(_pool(request), user_id) as connection:
+        row = await connection.fetchrow(
+            """SELECT user_id, display_name, locale, timezone, created_at, updated_at
+               FROM public.user_profiles WHERE user_id = $1""", user_id
+        )
     if row is None:
         return {"user_id": str(user_id), "display_name": None, "locale": "en", "timezone": "UTC"}
     result = _row(row)
@@ -95,17 +97,18 @@ async def update_profile(body: ProfileUpdate, request: Request,
     allowed = {"display_name", "locale", "timezone"}
     if set(changes) - allowed:
         raise HTTPException(400, detail={"code": "INVALID_PROFILE_FIELDS"})
-    row = await _pool(request).fetchrow(
-        """INSERT INTO public.user_profiles (user_id, display_name, locale, timezone)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (user_id) DO UPDATE SET
-             display_name = COALESCE(EXCLUDED.display_name, user_profiles.display_name),
-             locale = COALESCE(EXCLUDED.locale, user_profiles.locale),
-             timezone = COALESCE(EXCLUDED.timezone, user_profiles.timezone),
-             updated_at = now()
-           RETURNING user_id, display_name, locale, timezone, created_at, updated_at""",
-        user_id, changes.get("display_name"), changes.get("locale"), changes.get("timezone")
-    )
+    async with user_connection(_pool(request), user_id) as connection:
+        row = await connection.fetchrow(
+            """INSERT INTO public.user_profiles (user_id, display_name, locale, timezone)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (user_id) DO UPDATE SET
+                 display_name = COALESCE(EXCLUDED.display_name, user_profiles.display_name),
+                 locale = COALESCE(EXCLUDED.locale, user_profiles.locale),
+                 timezone = COALESCE(EXCLUDED.timezone, user_profiles.timezone),
+                 updated_at = now()
+               RETURNING user_id, display_name, locale, timezone, created_at, updated_at""",
+            user_id, changes.get("display_name"), changes.get("locale"), changes.get("timezone")
+        )
     result = _row(row)
     result["user_id"] = str(result["user_id"])
     return result
@@ -115,12 +118,13 @@ async def update_profile(body: ProfileUpdate, request: Request,
 async def create_conversation(body: ConversationCreate, request: Request,
                               user: AuthenticatedUser = Depends(get_current_user)):
     user_id, conversation_id = _identity(user), uuid4()
-    row = await _pool(request).fetchrow(
-        """INSERT INTO public.conversations (id, user_id, title)
-           VALUES ($1, $2, $3)
-           RETURNING id, title, metadata, created_at, updated_at, archived_at""",
-        conversation_id, user_id, body.title.strip()
-    )
+    async with user_connection(_pool(request), user_id) as connection:
+        row = await connection.fetchrow(
+            """INSERT INTO public.conversations (id, user_id, title)
+               VALUES ($1, $2, $3)
+               RETURNING id, title, metadata, created_at, updated_at, archived_at""",
+            conversation_id, user_id, body.title.strip()
+        )
     result = _row(row)
     result["id"] = str(result["id"])
     return result
@@ -130,12 +134,14 @@ async def create_conversation(body: ConversationCreate, request: Request,
 async def list_conversations(request: Request, limit: int = Query(30, ge=1, le=100),
                              offset: int = Query(0, ge=0),
                              user: AuthenticatedUser = Depends(get_current_user)):
-    rows = await _pool(request).fetch(
-        """SELECT id, title, metadata, created_at, updated_at, archived_at
-           FROM public.conversations WHERE user_id = $1
-           ORDER BY updated_at DESC, id DESC LIMIT $2 OFFSET $3""",
-        _identity(user), limit, offset
-    )
+    user_id = _identity(user)
+    async with user_connection(_pool(request), user_id) as connection:
+        rows = await connection.fetch(
+            """SELECT id, title, metadata, created_at, updated_at, archived_at
+               FROM public.conversations WHERE user_id = $1
+               ORDER BY updated_at DESC, id DESC LIMIT $2 OFFSET $3""",
+            user_id, limit, offset
+        )
     result = []
     for row in rows:
         item = _row(row)
@@ -147,11 +153,12 @@ async def list_conversations(request: Request, limit: int = Query(30, ge=1, le=1
 @router.get("/conversations/{conversation_id}")
 async def get_conversation(conversation_id: UUID, request: Request,
                            user: AuthenticatedUser = Depends(get_current_user)):
-    row = await _pool(request).fetchrow(
-        """SELECT id, title, metadata, created_at, updated_at, archived_at
-           FROM public.conversations WHERE id = $1 AND user_id = $2""",
-        conversation_id, _identity(user)
-    )
+    async with user_connection(_pool(request), _identity(user)) as connection:
+        row = await connection.fetchrow(
+            """SELECT id, title, metadata, created_at, updated_at, archived_at
+               FROM public.conversations WHERE id = $1 AND user_id = $2""",
+            conversation_id, _identity(user)
+        )
     if row is None:
         raise HTTPException(404, detail={"code": "CONVERSATION_NOT_FOUND"})
     result = _row(row)
@@ -163,22 +170,24 @@ async def get_conversation(conversation_id: UUID, request: Request,
 async def update_conversation(conversation_id: UUID, body: ConversationUpdate,
                               request: Request,
                               user: AuthenticatedUser = Depends(get_current_user)):
+    user_id = _identity(user)
     changes = body.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(400, detail={"code": "NO_CONVERSATION_CHANGES"})
     title = changes.get("title")
     archived = changes.get("archived")
-    row = await _pool(request).fetchrow(
-        """UPDATE public.conversations SET
-             title = COALESCE($3, title),
-             archived_at = CASE WHEN $4::boolean IS NULL THEN archived_at
-                                WHEN $4 THEN COALESCE(archived_at, now())
-                                ELSE NULL END,
-             updated_at = now()
-           WHERE id = $1 AND user_id = $2
-           RETURNING id, title, metadata, created_at, updated_at, archived_at""",
-        conversation_id, _identity(user), title.strip() if title is not None else None, archived
-    )
+    async with user_connection(_pool(request), user_id) as connection:
+        row = await connection.fetchrow(
+            """UPDATE public.conversations SET
+                 title = COALESCE($3, title),
+                 archived_at = CASE WHEN $4::boolean IS NULL THEN archived_at
+                                    WHEN $4 THEN COALESCE(archived_at, now())
+                                    ELSE NULL END,
+                 updated_at = now()
+               WHERE id = $1 AND user_id = $2
+               RETURNING id, title, metadata, created_at, updated_at, archived_at""",
+            conversation_id, user_id, title.strip() if title is not None else None, archived
+        )
     if row is None:
         raise HTTPException(404, detail={"code": "CONVERSATION_NOT_FOUND"})
     result = _row(row)
@@ -189,10 +198,11 @@ async def update_conversation(conversation_id: UUID, body: ConversationUpdate,
 @router.delete("/conversations/{conversation_id}", status_code=204)
 async def delete_conversation(conversation_id: UUID, request: Request,
                               user: AuthenticatedUser = Depends(get_current_user)):
-    result = await _pool(request).execute(
-        "DELETE FROM public.conversations WHERE id = $1 AND user_id = $2",
-        conversation_id, _identity(user)
-    )
+    async with user_connection(_pool(request), _identity(user)) as connection:
+        result = await connection.execute(
+            "DELETE FROM public.conversations WHERE id = $1 AND user_id = $2",
+            conversation_id, _identity(user)
+        )
     if result == "DELETE 0":
         raise HTTPException(404, detail={"code": "CONVERSATION_NOT_FOUND"})
     return Response(status_code=204)
@@ -204,19 +214,20 @@ async def list_messages(conversation_id: UUID, request: Request,
                         before: datetime | None = None,
                         user: AuthenticatedUser = Depends(get_current_user)):
     user_id = _identity(user)
-    owned = await _pool(request).fetchval(
-        "SELECT 1 FROM public.conversations WHERE id = $1 AND user_id = $2",
-        conversation_id, user_id
-    )
-    if not owned:
-        raise HTTPException(404, detail={"code": "CONVERSATION_NOT_FOUND"})
-    rows = await _pool(request).fetch(
-        """SELECT id, role, content, status, metadata, created_at
-           FROM public.messages WHERE conversation_id = $1 AND user_id = $2
-             AND ($3::timestamptz IS NULL OR created_at < $3)
-           ORDER BY created_at DESC, id DESC LIMIT $4""",
-        conversation_id, user_id, before, limit
-    )
+    async with user_connection(_pool(request), user_id) as connection:
+        owned = await connection.fetchval(
+            "SELECT 1 FROM public.conversations WHERE id = $1 AND user_id = $2",
+            conversation_id, user_id
+        )
+        if not owned:
+            raise HTTPException(404, detail={"code": "CONVERSATION_NOT_FOUND"})
+        rows = await connection.fetch(
+            """SELECT id, role, content, status, metadata, created_at
+               FROM public.messages WHERE conversation_id = $1 AND user_id = $2
+                 AND ($3::timestamptz IS NULL OR created_at < $3)
+               ORDER BY created_at DESC, id DESC LIMIT $4""",
+            conversation_id, user_id, before, limit
+        )
     items = []
     for row in rows:
         item = _row(row)
@@ -229,25 +240,24 @@ async def list_messages(conversation_id: UUID, request: Request,
 async def add_user_message(conversation_id: UUID, body: MessageCreate, request: Request,
                            user: AuthenticatedUser = Depends(get_current_user)):
     user_id, message_id = _identity(user), uuid4()
-    async with _pool(request).acquire() as connection:
-        async with connection.transaction():
-            owned = await connection.fetchval(
-                "SELECT 1 FROM public.conversations WHERE id = $1 AND user_id = $2 FOR UPDATE",
-                conversation_id, user_id
-            )
-            if not owned:
-                raise HTTPException(404, detail={"code": "CONVERSATION_NOT_FOUND"})
-            row = await connection.fetchrow(
-                """INSERT INTO public.messages
-                   (id, conversation_id, user_id, role, content, status, metadata)
-                   VALUES ($1, $2, $3, 'user', $4, 'complete', $5::jsonb)
-                   RETURNING id, role, content, status, metadata, created_at""",
-                message_id, conversation_id, user_id, body.content, json.dumps(body.metadata)
-            )
-            await connection.execute(
-                "UPDATE public.conversations SET updated_at = now() WHERE id = $1 AND user_id = $2",
-                conversation_id, user_id
-            )
+    async with user_connection(_pool(request), user_id) as connection:
+        owned = await connection.fetchval(
+            "SELECT 1 FROM public.conversations WHERE id = $1 AND user_id = $2 FOR UPDATE",
+            conversation_id, user_id
+        )
+        if not owned:
+            raise HTTPException(404, detail={"code": "CONVERSATION_NOT_FOUND"})
+        row = await connection.fetchrow(
+            """INSERT INTO public.messages
+               (id, conversation_id, user_id, role, content, status, metadata)
+               VALUES ($1, $2, $3, 'user', $4, 'complete', $5::jsonb)
+               RETURNING id, role, content, status, metadata, created_at""",
+            message_id, conversation_id, user_id, body.content, json.dumps(body.metadata)
+        )
+        await connection.execute(
+            "UPDATE public.conversations SET updated_at = now() WHERE id = $1 AND user_id = $2",
+            conversation_id, user_id
+        )
     result = _row(row)
     result["id"] = str(result["id"])
     return result
@@ -260,22 +270,23 @@ async def create_job(body: JobCreate, request: Request,
     if idempotency_key is not None and (not idempotency_key.strip() or len(idempotency_key) > 128):
         raise HTTPException(400, detail={"code": "INVALID_IDEMPOTENCY_KEY"})
     user_id, job_id = _identity(user), uuid4()
-    row = await _pool(request).fetchrow(
-        """INSERT INTO public.ai_jobs (id, user_id, job_type, input_payload, idempotency_key)
-           VALUES ($1, $2, $3, $4::jsonb, $5)
-           ON CONFLICT (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL
-           DO NOTHING
-           RETURNING id, job_type, status, input_payload, result_payload, attempts,
-                     max_attempts, available_at, created_at, updated_at""",
-        job_id, user_id, body.job_type, json.dumps(body.input_payload), idempotency_key
-    )
-    if row is None and idempotency_key is not None:
-        row = await _pool(request).fetchrow(
-            """SELECT id, job_type, status, input_payload, result_payload, attempts,
-                      max_attempts, available_at, created_at, updated_at
-               FROM public.ai_jobs WHERE user_id = $1 AND idempotency_key = $2""",
-            user_id, idempotency_key
+    async with user_connection(_pool(request), user_id) as connection:
+        row = await connection.fetchrow(
+            """INSERT INTO public.ai_jobs (id, user_id, job_type, input_payload, idempotency_key)
+               VALUES ($1, $2, $3, $4::jsonb, $5)
+               ON CONFLICT (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+               DO NOTHING
+               RETURNING id, job_type, status, input_payload, result_payload, attempts,
+                         max_attempts, available_at, created_at, updated_at""",
+            job_id, user_id, body.job_type, json.dumps(body.input_payload), idempotency_key
         )
+        if row is None and idempotency_key is not None:
+            row = await connection.fetchrow(
+                """SELECT id, job_type, status, input_payload, result_payload, attempts,
+                          max_attempts, available_at, created_at, updated_at
+                   FROM public.ai_jobs WHERE user_id = $1 AND idempotency_key = $2""",
+                user_id, idempotency_key
+            )
     if row is None:
         raise HTTPException(503, detail={"code": "JOB_CREATE_FAILED"})
     result = _row(row)
@@ -287,13 +298,15 @@ async def create_job(body: JobCreate, request: Request,
 async def list_jobs(request: Request, limit: int = Query(30, ge=1, le=100),
                     offset: int = Query(0, ge=0),
                     user: AuthenticatedUser = Depends(get_current_user)):
-    rows = await _pool(request).fetch(
-        """SELECT id, job_type, status, result_payload, attempts, max_attempts,
-                  available_at, finished_at, error_code, created_at, updated_at
-           FROM public.ai_jobs WHERE user_id = $1
-           ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3""",
-        _identity(user), limit, offset
-    )
+    user_id = _identity(user)
+    async with user_connection(_pool(request), user_id) as connection:
+        rows = await connection.fetch(
+            """SELECT id, job_type, status, result_payload, attempts, max_attempts,
+                      available_at, finished_at, error_code, created_at, updated_at
+               FROM public.ai_jobs WHERE user_id = $1
+               ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3""",
+            user_id, limit, offset
+        )
     items = []
     for row in rows:
         item = _row(row)
@@ -305,13 +318,14 @@ async def list_jobs(request: Request, limit: int = Query(30, ge=1, le=100),
 @router.get("/jobs/{job_id}")
 async def get_job(job_id: UUID, request: Request,
                   user: AuthenticatedUser = Depends(get_current_user)):
-    row = await _pool(request).fetchrow(
-        """SELECT id, job_type, status, input_payload, result_payload, attempts,
-                  max_attempts, available_at, locked_at, finished_at, error_code,
-                  created_at, updated_at
-           FROM public.ai_jobs WHERE id = $1 AND user_id = $2""",
-        job_id, _identity(user)
-    )
+    async with user_connection(_pool(request), _identity(user)) as connection:
+        row = await connection.fetchrow(
+            """SELECT id, job_type, status, input_payload, result_payload, attempts,
+                      max_attempts, available_at, locked_at, finished_at, error_code,
+                      created_at, updated_at
+               FROM public.ai_jobs WHERE id = $1 AND user_id = $2""",
+            job_id, _identity(user)
+        )
     if row is None:
         raise HTTPException(404, detail={"code": "JOB_NOT_FOUND"})
     result = _row(row)
@@ -322,18 +336,21 @@ async def get_job(job_id: UUID, request: Request,
 @router.post("/jobs/{job_id}/cancel")
 async def cancel_job(job_id: UUID, request: Request,
                      user: AuthenticatedUser = Depends(get_current_user)):
-    row = await _pool(request).fetchrow(
-        """UPDATE public.ai_jobs SET status = 'cancelled', finished_at = now(),
-                  updated_at = now()
-           WHERE id = $1 AND user_id = $2 AND status = 'queued'
-           RETURNING id, job_type, status, updated_at""",
-        job_id, _identity(user)
-    )
-    if row is None:
-        existing = await _pool(request).fetchrow(
-            "SELECT status FROM public.ai_jobs WHERE id = $1 AND user_id = $2",
-            job_id, _identity(user)
+    user_id = _identity(user)
+    async with user_connection(_pool(request), user_id) as connection:
+        row = await connection.fetchrow(
+            """UPDATE public.ai_jobs SET status = 'cancelled', finished_at = now(),
+                      updated_at = now()
+               WHERE id = $1 AND user_id = $2 AND status = 'queued'
+               RETURNING id, job_type, status, updated_at""",
+            job_id, user_id
         )
+        if row is None:
+            existing = await connection.fetchrow(
+                "SELECT status FROM public.ai_jobs WHERE id = $1 AND user_id = $2",
+                job_id, user_id
+            )
+    if row is None:
         if existing is None:
             raise HTTPException(404, detail={"code": "JOB_NOT_FOUND"})
         raise HTTPException(409, detail={"code": "JOB_NOT_CANCELLABLE", "status": existing["status"]})
@@ -346,11 +363,12 @@ async def cancel_job(job_id: UUID, request: Request,
 async def get_entitlements(request: Request,
                            user: AuthenticatedUser = Depends(get_current_user)):
     user_id = _identity(user)
-    row = await _pool(request).fetchrow(
-        """SELECT plan_code, status, source, limits, period_started_at,
-                  period_ends_at, updated_at
-           FROM public.user_entitlements WHERE user_id = $1""", user_id
-    )
+    async with user_connection(_pool(request), user_id) as connection:
+        row = await connection.fetchrow(
+            """SELECT plan_code, status, source, limits, period_started_at,
+                      period_ends_at, updated_at
+               FROM public.user_entitlements WHERE user_id = $1""", user_id
+        )
     if row is None:
         return {"plan_code": "free", "status": "active", "source": "default",
                 "limits": {}, "period_started_at": None, "period_ends_at": None}
@@ -360,19 +378,20 @@ async def get_entitlements(request: Request,
 @router.get("/usage")
 async def get_usage(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
     user_id = _identity(user)
-    summary = await _pool(request).fetchrow(
-        """SELECT count(*) AS event_count, COALESCE(sum(input_tokens), 0) AS input_tokens,
-                  COALESCE(sum(output_tokens), 0) AS output_tokens,
-                  COALESCE(sum(units), 0) AS units,
-                  COALESCE(sum(estimated_cost_usd), 0) AS estimated_cost_usd
-           FROM public.usage_events
-           WHERE user_id = $1 AND created_at >= now() - interval '30 days'""", user_id
-    )
-    recent = await _pool(request).fetch(
-        """SELECT id, feature_code, provider_code, model_code, input_tokens,
-                  output_tokens, units, estimated_cost_usd, created_at
-           FROM public.usage_events WHERE user_id = $1
-           ORDER BY created_at DESC LIMIT 50""", user_id
-    )
+    async with user_connection(_pool(request), user_id) as connection:
+        summary = await connection.fetchrow(
+            """SELECT count(*) AS event_count, COALESCE(sum(input_tokens), 0) AS input_tokens,
+                      COALESCE(sum(output_tokens), 0) AS output_tokens,
+                      COALESCE(sum(units), 0) AS units,
+                      COALESCE(sum(estimated_cost_usd), 0) AS estimated_cost_usd
+               FROM public.usage_events
+               WHERE user_id = $1 AND created_at >= now() - interval '30 days'""", user_id
+        )
+        recent = await connection.fetch(
+            """SELECT id, feature_code, provider_code, model_code, input_tokens,
+                      output_tokens, units, estimated_cost_usd, created_at
+               FROM public.usage_events WHERE user_id = $1
+               ORDER BY created_at DESC LIMIT 50""", user_id
+        )
     return {"period_days": 30, "summary": _row(summary),
             "recent_events": [_row(item) for item in recent]}
