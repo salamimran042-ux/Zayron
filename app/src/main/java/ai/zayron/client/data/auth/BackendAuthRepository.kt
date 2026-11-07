@@ -135,14 +135,20 @@ class BackendAuthRepository(
         null
     }
 
-    private fun parseProfile(raw: String, tokens: SessionTokens): AuthSession? = try {
-        val profile = JSONObject(raw)
-        val id = profile.getString("id")
-        val email = profile.optString("email").takeIf { it.isNotBlank() } ?: tokens.email ?: return null
-        val name = profile.optString("display_name").takeIf { it.isNotBlank() } ?: tokens.displayName
-        AuthSession(id, email, name, tokens.accessExpiresAtEpochSeconds)
-    } catch (_: Exception) {
-        null
+    private fun parseProfile(raw: String, tokens: SessionTokens): AuthSession? {
+        return try {
+            val profile = JSONObject(raw)
+            val id = profile.getString("id")
+            val email = profile.optString("email").takeIf { it.isNotBlank() } ?: tokens.email
+            if (email.isNullOrBlank()) {
+                null
+            } else {
+                val name = profile.optString("display_name").takeIf { it.isNotBlank() } ?: tokens.displayName
+                AuthSession(id, email, name, tokens.accessExpiresAtEpochSeconds)
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private suspend fun clearSession() = withContext(Dispatchers.IO) { sessionStore.clear() }
