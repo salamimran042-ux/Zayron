@@ -29,6 +29,9 @@ class Settings(BaseSettings):
             "supabase_service_role_key": (
                 "configured" if self.supabase_service_role_key else "not_configured"
             ),
+            "supabase_jwt_verification": (
+                "configured" if self.supabase_url else "not_configured"
+            ),
         }
 
 
