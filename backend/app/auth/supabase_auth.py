@@ -45,14 +45,14 @@ class SupabaseAuthClient:
     def __init__(
         self,
         supabase_url: str,
-        anon_key: str,
+        publishable_key: str,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         base_url = self._validated_base_url(supabase_url)
         self._client = httpx.AsyncClient(
             base_url=base_url,
-            headers={"apikey": anon_key, "Accept": "application/json"},
+            headers={"apikey": publishable_key, "Accept": "application/json"},
             timeout=httpx.Timeout(12.0, connect=5.0),
             transport=transport,
         )
@@ -85,11 +85,12 @@ class SupabaseAuthClient:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "SupabaseAuthClient | None":
-        if not settings.supabase_url or not settings.supabase_anon_key:
+        publishable_key = settings.effective_supabase_publishable_key
+        if not settings.supabase_url or not publishable_key:
             return None
         return cls(
             settings.supabase_url,
-            settings.supabase_anon_key.get_secret_value(),
+            publishable_key.get_secret_value(),
         )
 
     async def close(self) -> None:
