@@ -16,6 +16,29 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Permanent release identity is supplied only by protected CI environment variables.
+    // Never commit a keystore, alias, or password to the repository.
+    signingConfigs {
+        create("release") {
+            val releaseStorePath = System.getenv("ZAYRON_RELEASE_STORE_FILE")
+                ?: error("Release signing is not configured. Set ZAYRON_RELEASE_STORE_FILE in the release build environment.")
+            storeFile = file(releaseStorePath)
+            storePassword = System.getenv("ZAYRON_RELEASE_STORE_PASSWORD")
+                ?: error("Missing ZAYRON_RELEASE_STORE_PASSWORD.")
+            keyAlias = System.getenv("ZAYRON_RELEASE_KEY_ALIAS")
+                ?: error("Missing ZAYRON_RELEASE_KEY_ALIAS.")
+            keyPassword = System.getenv("ZAYRON_RELEASE_KEY_PASSWORD")
+                ?: error("Missing ZAYRON_RELEASE_KEY_PASSWORD.")
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+        }
+    }
+
     buildFeatures {
         compose = true
     }
