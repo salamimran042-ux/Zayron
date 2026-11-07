@@ -1,3 +1,6 @@
+import asyncio
+
+from app.auth.supabase_auth import SupabaseAuthClient
 from app.core.config import Settings
 
 
@@ -62,3 +65,30 @@ def test_current_publishable_key_takes_precedence_over_legacy_anon_key() -> None
 
     assert settings.effective_supabase_publishable_key is not None
     assert settings.effective_supabase_publishable_key.get_secret_value() == "sb_publishable_current"
+
+
+def test_auth_client_uses_current_publishable_key() -> None:
+    settings = Settings(
+        supabase_url="https://project.supabase.co",
+        supabase_publishable_key="sb_publishable_current",
+        supabase_secret_key="sb_secret_server_only",
+        _env_file=None,
+    )
+    client = SupabaseAuthClient.from_settings(settings)
+
+    assert client is not None
+    assert client._client.headers["apikey"] == "sb_publishable_current"
+    asyncio.run(client.close())
+
+
+def test_auth_client_falls_back_to_legacy_anon_key() -> None:
+    settings = Settings(
+        supabase_url="https://project.supabase.co",
+        supabase_anon_key="legacy_anon_key",
+        _env_file=None,
+    )
+    client = SupabaseAuthClient.from_settings(settings)
+
+    assert client is not None
+    assert client._client.headers["apikey"] == "legacy_anon_key"
+    asyncio.run(client.close())
