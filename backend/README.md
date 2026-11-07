@@ -7,7 +7,8 @@ FastAPI service foundation for the Zayron AI Android application.
 Supply values through protected environment variables or a secret manager. Never commit real credentials.
 
 - `ZAYRON_ENVIRONMENT`: environment label.
-- `ZAYRON_DATABASE_URL`: PostgreSQL connection string.
+- `ZAYRON_DATABASE_URL`: PostgreSQL connection string for the restricted `zayron_runtime` login. This is the only database URL the running API needs.
+- `ZAYRON_MIGRATION_DATABASE_URL`: privileged PostgreSQL connection string used only for the one-off migration command. Do not put it in the API service's runtime environment.
 - `ZAYRON_WORKER_TOKEN`: long random secret used only by trusted job workers; keep it in a server-side secret manager.
 - `ZAYRON_SUPABASE_URL`: clean HTTPS Supabase project origin.
 - `ZAYRON_SUPABASE_PUBLISHABLE_KEY`: current Supabase publishable API key used by the server-side Auth adapter.
@@ -15,6 +16,32 @@ Supply values through protected environment variables or a secret manager. Never
 - `ZAYRON_SUPABASE_ANON_KEY` and `ZAYRON_SUPABASE_SERVICE_ROLE_KEY`: legacy compatibility variables only. Prefer the current publishable/secret key names for new projects.
 
 The Auth adapter sends the publishable key in the Supabase `apikey` header. It does not use the secret key for login, registration, refresh, or logout. Configuration status reveals presence only, never secret values. Do not put any Supabase secret key, database password, or worker token in the Android app or public repository.
+
+## Database security and connection model
+
+The Supabase database uses dedicated, non-bypass roles:
+
+- `zayron_runtime` is the backend login role. It is deliberately `NOINHERIT` and can switch only into the two restricted group roles.
+- `zayron_api` is used for authenticated user requests. Each request starts a transaction, sets this role locally, and sets `request.jwt.claim.sub` from the subject of the already-verified Supabase access token. PostgreSQL RLS then checks `auth.uid() = user_id`.
+- `zayron_worker` is used only after the separate internal worker bearer token has been verified. It can claim and update jobs and insert job events, but has no access to unrelated application tables.
+- None of these roles has `BYPASSRLS`. The API must not connect as `postgres` or `service_role`.
+
+All seven application tables have RLS enabled and forced. Anonymous, authenticated Data API, and service-role table grants are revoked; the backend uses its restricted direct PostgreSQL connection. The migration also removes broad default table/sequence grants for objects created by the PostgreSQL migration owner. Do not add broad grants to clear an advisor warning.
+
+The `zayron_runtime` role is created without login/password by the security migration. Before deployment, enable login and set a strong password using the Supabase SQL editor or approved database administration workflow, then store the resulting connection string only in the hosting provider's secret manager. Never paste the password into chat, commit it, or place it in Android.
+
+Choose the Supabase connection mode based on the deployment host's network: direct connections are suitable for persistent IPv6-capable backends; use the shared pooler's **session mode** for an IPv4-only persistent host. Copy the exact host and username from Supabase Dashboard → Connect; do not construct a pooler hostname. The driver requires TLS.
+
+The API does not run migrations at startup. Run migrations as a separate deployment step with `ZAYRON_MIGRATION_DATABASE_URL`, using a privileged database connection that is never configured on the live API process:
+
+```bash
+cd backend
+python -m pip install -e ".[dev]"
+python -m app.db.migrate
+pytest
+```
+
+The migration ledger is stored in the unexposed `zayron_private.schema_migrations` schema. The runner takes a PostgreSQL transaction-scoped advisory lock, applies each migration atomically, records a SHA-256 checksum, and refuses to continue if an already-applied migration has been edited. Add a new numbered SQL file for every future schema change; do not rewrite an applied migration.
 
 ## Database platform foundation
 
@@ -25,23 +52,11 @@ The versioned migrations create the platform's core persistence tables:
 - `user_entitlements` for plan and access state; this is infrastructure only, not a billing integration.
 - `usage_events` for auditable feature usage, token counts, optional estimated cost and idempotency.
 - `ai_jobs` for queued work, retries, scheduling and terminal outcomes.
-
-Apply migrations explicitly after configuring PostgreSQL:
-
-```bash
-cd backend
-python -m pip install -e ".[dev]"
-python -m app.db.migrate
-pytest
-```
-
-Migrations are not run automatically at API startup. The runner takes a PostgreSQL transaction-scoped advisory lock, applies each migration atomically, records a SHA-256 checksum, and refuses to continue if an already-applied migration has been edited. Add a new numbered SQL file for every future schema change; do not rewrite an applied migration.
-
-The API connects with a server-side database role. Every future data-access query must scope reads and writes by the authenticated `user_id`; the schema's composite ownership constraint additionally prevents cross-account message/conversation links. Do not expose the database connection or privileged credentials to Android. Production row-level security and database-role policy must be designed and verified before multi-tenant production launch.
+- `ai_job_events` for job lifecycle events.
 
 ## Authenticated platform API
 
-The API exposes account-scoped profile, conversation, message, job, entitlement and usage-read endpoints. Job creation is idempotent when an `Idempotency-Key` is supplied. A client can cancel a job only while it remains queued. The server never trusts a client-supplied account ID; ownership comes from the verified JWT subject.
+The API exposes account-scoped profile, conversation, message, job, entitlement and usage-read endpoints. Job creation is idempotent when an `Idempotency-Key` is supplied. A client can cancel a job only while it remains queued. The server never trusts a client-supplied account ID; ownership comes from the verified JWT subject. PostgreSQL RLS independently enforces the same ownership boundary for every query.
 
 The job API includes a worker control plane: workers authenticate with a separate server-side token, claim jobs using PostgreSQL `FOR UPDATE SKIP LOCKED`, renew leases, and report success or failure. Failures can be rescheduled within the attempt limit. Worker endpoints never accept a user ID from the client. The worker execution process and actual tool handlers are still separate work; no AI provider or file storage is connected. Usage events and entitlement grants are server-owned and cannot be written through client routes.
 
@@ -56,4 +71,4 @@ The job API includes a worker control plane: workers authenticate with a separat
 
 Supabase Auth owns credential validation, refresh rotation and session revocation. The backend does not persist passwords or refresh tokens. Android must store token material only in its Android Keystore-backed encrypted store. Provider response bodies and credentials are not exposed in API errors. Supabase project-side rate limits must be reviewed before production.
 
-These routes are implemented in source and tested with mocked provider responses. They are not live until a real Supabase project is configured and the backend is deployed. The current key names are supported while legacy anon/service-role environment names remain temporarily compatible.
+These routes are implemented in source and tested with mocked provider responses; they are not live until a real Supabase project is configured and the backend is deployed. The current key names are supported while legacy anon/service-role environment names remain temporarily compatible.
