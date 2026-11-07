@@ -16,6 +16,25 @@ class SseFrameDecoderTest {
     }
 
     @Test
+    fun ignoresUtf8BomAtBeginningOfStream() {
+        val decoder = SseFrameDecoder()
+        assertEquals(
+            listOf(ChatStreamEvent.Delta("Hello")),
+            decoder.append("\uFEFFevent: message.delta\ndata: {\"delta\":\"Hello\"}\n\n")
+        )
+    }
+
+    @Test
+    fun ignoresUtf8BomWhenItArrivesInItsOwnChunk() {
+        val decoder = SseFrameDecoder()
+        assertTrue(decoder.append("\uFEFF").isEmpty())
+        assertEquals(
+            listOf(ChatStreamEvent.Delta("Hello")),
+            decoder.append("event: message.delta\ndata: {\"delta\":\"Hello\"}\n\n")
+        )
+    }
+
+    @Test
     fun joinsMultipleDataLinesIntoOnePayload() {
         val decoder = SseFrameDecoder()
         val events = decoder.append(
