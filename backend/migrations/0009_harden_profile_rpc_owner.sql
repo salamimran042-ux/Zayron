@@ -29,6 +29,8 @@ CREATE POLICY zayron_profile_rpc_insert_own ON public.user_profiles
 -- PostgreSQL requires CREATE on the containing schema to transfer function
 -- ownership. Remove that temporary privilege immediately afterward.
 GRANT CREATE ON SCHEMA public TO zayron_profile_rpc_owner;
+GRANT zayron_profile_rpc_owner TO postgres;
 ALTER FUNCTION public.zayron_get_my_profile()
     OWNER TO zayron_profile_rpc_owner;
+REVOKE zayron_profile_rpc_owner FROM postgres;
 REVOKE CREATE ON SCHEMA public FROM zayron_profile_rpc_owner;
