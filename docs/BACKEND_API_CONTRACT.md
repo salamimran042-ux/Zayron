@@ -41,7 +41,7 @@ Still outstanding: configure a real Supabase project, review email-confirmation/
 
 Every database query is scoped by the verified account UUID. Missing or foreign-owned records return the same not-found response. Job creation accepts an optional `Idempotency-Key`; retries with the same key return the existing job rather than creating duplicates. User-facing APIs cannot write their own usage records or entitlement grants.
 
-These routes require PostgreSQL and the explicit migrations. They are source implementation only; no live database, worker, billing integration, storage service, or AI provider is connected. Queued jobs remain queued until a separately secured worker is implemented.
+These routes require PostgreSQL and the explicit migrations. They are source implementation only; no live database, worker, billing integration, storage service, or AI provider is connected. Internal worker endpoints are now implemented at `/internal/v1/jobs/claim`, `/{id}/heartbeat`, `/{id}/complete` and `/{id}/fail`. They require a separate `ZAYRON_WORKER_TOKEN`, claim work with `SKIP LOCKED`, use expiring worker leases and record lifecycle events. No worker process or tool execution handler is deployed yet.
 
 ## Remaining proposed API surface
 

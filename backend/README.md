@@ -7,7 +7,7 @@ FastAPI service foundation for the Zayron AI Android application.
 Supply values through protected environment variables or a secret manager. Never commit real credentials.
 
 - `ZAYRON_ENVIRONMENT`: environment label.
-- `ZAYRON_DATABASE_URL`: PostgreSQL connection string.
+- `ZAYRON_DATABASE_URL`: PostgreSQL connection string.\n- `ZAYRON_WORKER_TOKEN`: long random secret used only by trusted job workers; keep it in a server-side secret manager.
 - `ZAYRON_SUPABASE_URL`: clean HTTPS Supabase project origin.
 - `ZAYRON_SUPABASE_ANON_KEY`: Supabase public anon key used by the server-side Auth client.
 - `ZAYRON_SUPABASE_SERVICE_ROLE_KEY`: reserved for narrowly scoped server administration; never send it to Android.
@@ -41,7 +41,7 @@ The API connects with a server-side database role. Every future data-access quer
 
 The API exposes account-scoped profile, conversation, message, job, entitlement and usage-read endpoints. Job creation is idempotent when an `Idempotency-Key` is supplied. A client can cancel a job only while it remains queued. The server never trusts a client-supplied account ID; ownership comes from the verified JWT subject.
 
-The job API currently creates and tracks queued work only. A worker, queue-claim lease, provider execution, file storage and actual AI generation are not connected. Usage events and entitlement grants are server-owned and cannot be written through client routes.
+The job API includes a worker control plane: workers authenticate with a separate server-side token, claim jobs using PostgreSQL `FOR UPDATE SKIP LOCKED`, renew leases, and report success or failure. Failures can be rescheduled within the attempt limit. Worker endpoints never accept a user ID from the client. The worker execution process and actual tool handlers are still separate work; no AI provider or file storage is connected. Usage events and entitlement grants are server-owned and cannot be written through client routes.
 
 ## Authentication foundation
 

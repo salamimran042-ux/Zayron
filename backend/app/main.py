@@ -7,7 +7,7 @@ from app.auth.supabase_auth import SupabaseAuthClient
 from app.auth.token_verifier import SupabaseTokenVerifier
 from app.core.config import get_settings
 from app.db.pool import DatabaseRuntime
-from app.platform.routes import router as platform_router
+from app.platform.routes import router as platform_router\nfrom app.platform.worker_routes import router as worker_router
 
 settings = get_settings()
 
@@ -15,7 +15,7 @@ settings = get_settings()
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     database = DatabaseRuntime()
     await database.open(settings)
-    application.state.database = database
+    application.state.database = database\n    application.state.settings = settings
     application.state.token_verifier = SupabaseTokenVerifier(settings)
     auth_client = SupabaseAuthClient.from_settings(settings)
     application.state.supabase_auth = auth_client
@@ -30,7 +30,7 @@ app = FastAPI(title="Zayron AI API",
               description="The server-side foundation for Zayron AI.",
               version="0.2.0", lifespan=lifespan)
 app.include_router(auth_router)
-app.include_router(platform_router)
+app.include_router(platform_router)\napp.include_router(worker_router)
 
 @app.get("/health", tags=["operations"])
 async def health() -> dict[str, str]:

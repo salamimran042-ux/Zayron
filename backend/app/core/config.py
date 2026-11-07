@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = None
     supabase_url: str | None = None
     supabase_anon_key: SecretStr | None = None
-    supabase_service_role_key: SecretStr | None = None
+    supabase_service_role_key: SecretStr | None = None\n    worker_token: SecretStr | None = None
 
     def integration_status(self) -> dict[str, str]:
         """Expose configuration presence without returning credentials."""
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
             "supabase_service_role_key": (
                 "configured" if self.supabase_service_role_key else "not_configured"
             ),
-            "supabase_jwt_verification": (
+            "worker": "configured" if self.worker_token else "not_configured",\n            "supabase_jwt_verification": (
                 "configured" if self.supabase_url else "not_configured"
             ),
         }
