@@ -13,7 +13,7 @@ Implemented:
 - Async PostgreSQL connection pool with bounded pool sizing and startup/shutdown lifecycle
 - Supabase asymmetric JWT verification boundary using the project's published JWKS, strict issuer/audience checks, and an explicit signing-algorithm allowlist
 - FastAPI HTTP Bearer authentication dependency wired to the Supabase verifier
-- Protected `GET /v1/me` endpoint returning only the verified user ID and optional role
+- Protected `GET /api/v1/me` endpoint returning only the verified user ID and optional role
 - Authentication tests for missing, unconfigured, invalid, expired, and valid tokens
 - Python package metadata and development dependencies
 - Container definition for a future Cloud Run deployment
@@ -31,7 +31,7 @@ Not implemented or connected yet:
 
 The token verifier obtains public signing keys from `{SUPABASE_URL}/auth/v1/.well-known/jwks.json`. It validates the token signature, expected issuer, `authenticated` audience, and required `exp`, `iat`, and `sub` claims. It fails closed when Supabase is not configured and does not accept an unverified token. The service-role key is not used for user-token verification. The FastAPI dependency performs verification in a worker thread so a remote JWKS lookup does not block the async event loop. Failed or missing authentication returns HTTP 401 with `WWW-Authenticate: Bearer`.
 
-`GET /v1/me` requires a valid Supabase access token in the Authorization Bearer header. It returns only the verified subject as `id` and the optional role claim. It never returns the raw token or secret material.
+`GET /api/v1/me` requires a valid Supabase access token in the Authorization Bearer header. It returns only the verified subject as `id` and the optional role claim. It never returns the raw token or secret material.
 
 `/health` confirms only that the API process responds. `/ready` returns success only after a real `SELECT 1` database round-trip; without configured and reachable PostgreSQL it returns HTTP 503. `/config/status` reports whether integration settings are present without exposing credentials.
 

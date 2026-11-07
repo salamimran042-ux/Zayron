@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from app.auth.dependencies import get_current_user
 from app.auth.token_verifier import AuthenticatedUser
 
-router = APIRouter(prefix="/v1", tags=["authentication"])
+router = APIRouter(prefix="/api/v1", tags=["authentication"])
 
 
 @router.get("/me")

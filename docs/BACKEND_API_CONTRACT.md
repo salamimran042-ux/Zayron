@@ -14,7 +14,7 @@ This document defines a safe integration boundary for the Android client. It is 
 
 ## Authentication and session lifecycle (required contract)
 
-The client will not enable sign-in until the deployed backend implements and documents all of the following:
+The client will not enable sign-in until the deployed backend implements and documents all of the following. The currently implemented protected identity route is `GET /api/v1/me`; login, refresh and logout remain future work.
 
 - Login accepts email and password over HTTPS and returns a non-secret user profile, a short-lived access token, its absolute expiry time, and a rotating refresh token.
 - Access tokens are short-lived (recommended 5–15 minutes) and scoped to the authenticated user. The backend validates signature, issuer, audience, expiry and revocation state on every protected request.

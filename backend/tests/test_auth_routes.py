@@ -46,7 +46,7 @@ def configured_verifier(public_key) -> SupabaseTokenVerifier:
 
 def test_me_rejects_missing_bearer_token() -> None:
     with TestClient(app) as client:
-        response = client.get("/v1/me")
+        response = client.get("/api/v1/me")
 
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
@@ -54,7 +54,7 @@ def test_me_rejects_missing_bearer_token() -> None:
 
 def test_me_rejects_token_when_verifier_is_not_configured() -> None:
     with TestClient(app) as client:
-        response = client.get("/v1/me", headers={"Authorization": "Bearer not.a.valid.token"})
+        response = client.get("/api/v1/me", headers={"Authorization": "Bearer not.a.valid.token"})
 
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
@@ -66,7 +66,7 @@ def test_me_rejects_invalid_token() -> None:
     with TestClient(app) as client:
         app.state.token_verifier = configured_verifier(other_key.public_key())
         response = client.get(
-            "/v1/me",
+            "/api/v1/me",
             headers={"Authorization": f"Bearer {build_token(private_key)}"},
         )
 
@@ -79,7 +79,7 @@ def test_me_rejects_expired_token() -> None:
     with TestClient(app) as client:
         app.state.token_verifier = configured_verifier(private_key.public_key())
         response = client.get(
-            "/v1/me",
+            "/api/v1/me",
             headers={"Authorization": f"Bearer {build_token(private_key, expired=True)}"},
         )
 
@@ -92,9 +92,27 @@ def test_me_returns_only_verified_identity_fields() -> None:
     with TestClient(app) as client:
         app.state.token_verifier = configured_verifier(private_key.public_key())
         response = client.get(
-            "/v1/me",
+            "/api/v1/me",
             headers={"Authorization": f"Bearer {build_token(private_key)}"},
         )
 
     assert response.status_code == 200
     assert response.json() == {"id": "user-123", "role": "authenticated"}
+
+
+def test_me_is_not_exposed_on_unversioned_legacy_path() -> None:
+    with TestClient(app) as client:
+        response = client.get("/v1/me")
+
+    assert response.status_code == 404
+
+
+def test_me_rejects_basic_auth_scheme() -> None:
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/me",
+            headers={"Authorization": "Basic dXNlcjpwYXNz"},
+        )
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
