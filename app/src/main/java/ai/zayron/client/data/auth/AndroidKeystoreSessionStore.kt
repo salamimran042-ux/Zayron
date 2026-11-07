@@ -19,19 +19,20 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/**
- * Encrypted client-side credentials needed to restore and refresh a backend session.
- * These values must never be exposed to Compose state, logs, analytics or crash reports.
- */
+/** Encrypted credentials and minimal account profile; never expose tokens to UI state. */
 class SessionTokens(
     val accessToken: String,
     val refreshToken: String,
-    val accessExpiresAtEpochSeconds: Long
+    val accessExpiresAtEpochSeconds: Long,
+    val email: String? = null,
+    val displayName: String? = null
 ) {
     init {
         require(accessToken.isNotBlank()) { "Access token must not be blank." }
         require(refreshToken.isNotBlank()) { "Refresh token must not be blank." }
         require(accessExpiresAtEpochSeconds > 0) { "A valid absolute expiry is required." }
+        require(email == null || email.length <= 320) { "Email is too long." }
+        require(displayName == null || displayName.length <= 120) { "Display name is too long." }
     }
 }
 
@@ -39,19 +40,13 @@ class SessionTokens(
 interface SecureSessionStore {
     @Throws(Exception::class)
     fun save(tokens: SessionTokens)
-
-    /** Returns null when no valid stored session exists. Corrupt or unreadable data is cleared. */
     fun read(): SessionTokens?
-
-    /** Removes both encrypted session data and its Keystore key. */
     fun clear()
 }
 
 /**
- * AES-256-GCM encrypted session storage backed by an Android Keystore key.
- *
- * Ciphertext is written to an app-private, no-backup file. The AES key is non-exportable
- * and remains in Android Keystore. There is deliberately no plaintext fallback.
+ * AES-256-GCM encrypted session storage backed by a non-exportable Android Keystore key.
+ * Format v2 adds encrypted profile fields and continues reading existing v1 sessions.
  */
 class AndroidKeystoreSessionStore(context: Context) : SecureSessionStore {
     private val appContext = context.applicationContext
@@ -73,17 +68,12 @@ class AndroidKeystoreSessionStore(context: Context) : SecureSessionStore {
                 data.writeInt(ciphertext.size)
                 data.write(ciphertext)
             }
-
             FileOutputStream(temporaryFile).use { stream ->
                 stream.write(output.toByteArray())
                 stream.fd.sync()
             }
-            Files.move(
-                temporaryFile.toPath(),
-                sessionFile.toPath(),
-                StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.ATOMIC_MOVE
-            )
+            Files.move(temporaryFile.toPath(), sessionFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
         } finally {
             plaintext.fill(0)
             if (temporaryFile.exists()) temporaryFile.delete()
@@ -94,22 +84,17 @@ class AndroidKeystoreSessionStore(context: Context) : SecureSessionStore {
     override fun read(): SessionTokens? {
         if (!sessionFile.isFile) return null
         return try {
-            require(sessionFile.length() in MIN_ENCRYPTED_FILE_LENGTH..MAX_ENCRYPTED_FILE_LENGTH) {
-                "Invalid encrypted session file size."
-            }
+            require(sessionFile.length() in MIN_ENCRYPTED_FILE_LENGTH..MAX_ENCRYPTED_FILE_LENGTH)
             val encrypted = FileInputStream(sessionFile).use { it.readBytes() }
             DataInputStream(ByteArrayInputStream(encrypted)).use { data ->
-                require(data.readInt() == FORMAT_VERSION) { "Unsupported session format." }
+                require(data.readInt() == FORMAT_VERSION)
                 val ivLength = data.readInt()
-                require(ivLength == GCM_IV_LENGTH) { "Invalid session nonce." }
+                require(ivLength == GCM_IV_LENGTH)
                 val iv = ByteArray(ivLength).also(data::readFully)
                 val ciphertextLength = data.readInt()
-                require(ciphertextLength in MIN_CIPHERTEXT_LENGTH..MAX_CIPHERTEXT_LENGTH) {
-                    "Invalid encrypted session size."
-                }
+                require(ciphertextLength in MIN_CIPHERTEXT_LENGTH..MAX_CIPHERTEXT_LENGTH)
                 val ciphertext = ByteArray(ciphertextLength).also(data::readFully)
-                require(data.available() == 0) { "Unexpected trailing session data." }
-
+                require(data.available() == 0)
                 val cipher = Cipher.getInstance(TRANSFORMATION)
                 cipher.init(Cipher.DECRYPT_MODE, getExistingKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
                 val plaintext = cipher.doFinal(ciphertext)
@@ -135,7 +120,7 @@ class AndroidKeystoreSessionStore(context: Context) : SecureSessionStore {
             val keyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
             if (keyStore.containsAlias(KEY_ALIAS)) keyStore.deleteEntry(KEY_ALIAS)
         } catch (_: Exception) {
-            // Local file deletion still occurs if Keystore cleanup is unavailable.
+            // File deletion still occurs if Keystore cleanup is unavailable.
         }
     }
 
@@ -148,17 +133,11 @@ class AndroidKeystoreSessionStore(context: Context) : SecureSessionStore {
     private fun getOrCreateKey(): SecretKey {
         getExistingKeyOrNull()?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEY_STORE)
-        generator.init(
-            KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-            )
-                .setKeySize(256)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setRandomizedEncryptionRequired(true)
-                .build()
-        )
+        generator.init(KeyGenParameterSpec.Builder(KEY_ALIAS,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            .setKeySize(256).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setRandomizedEncryptionRequired(true).build())
         return generator.generateKey()
     }
 
@@ -175,19 +154,32 @@ class AndroidKeystoreSessionStore(context: Context) : SecureSessionStore {
             data.writeUTF(tokens.accessToken)
             data.writeUTF(tokens.refreshToken)
             data.writeLong(tokens.accessExpiresAtEpochSeconds)
+            writeNullableString(data, tokens.email)
+            writeNullableString(data, tokens.displayName)
         }
         return output.toByteArray()
     }
 
     private fun decode(bytes: ByteArray): SessionTokens =
         DataInputStream(ByteArrayInputStream(bytes)).use { data ->
-            require(data.readInt() == FORMAT_VERSION) { "Unsupported token payload." }
+            val version = data.readInt()
+            require(version == LEGACY_FORMAT_VERSION || version == FORMAT_VERSION)
             val access = data.readUTF()
             val refresh = data.readUTF()
             val expiry = data.readLong()
-            require(data.available() == 0) { "Unexpected token payload data." }
-            SessionTokens(access, refresh, expiry)
+            val email = if (version >= FORMAT_VERSION) readNullableString(data) else null
+            val name = if (version >= FORMAT_VERSION) readNullableString(data) else null
+            require(data.available() == 0)
+            SessionTokens(access, refresh, expiry, email, name)
         }
+
+    private fun writeNullableString(data: DataOutputStream, value: String?) {
+        data.writeBoolean(value != null)
+        if (value != null) data.writeUTF(value)
+    }
+
+    private fun readNullableString(data: DataInputStream): String? =
+        if (data.readBoolean()) data.readUTF() else null
 
     private companion object {
         const val ANDROID_KEY_STORE = "AndroidKeyStore"
@@ -195,7 +187,8 @@ class AndroidKeystoreSessionStore(context: Context) : SecureSessionStore {
         const val SESSION_FILE_NAME = "zayron_session.enc"
         const val TEMP_FILE_NAME = "zayron_session.enc.tmp"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
-        const val FORMAT_VERSION = 1
+        const val LEGACY_FORMAT_VERSION = 1
+        const val FORMAT_VERSION = 2
         const val GCM_IV_LENGTH = 12
         const val GCM_TAG_BITS = 128
         const val MIN_CIPHERTEXT_LENGTH = 16
