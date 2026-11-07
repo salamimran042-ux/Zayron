@@ -27,12 +27,17 @@ function publishableKey(): string | null {
   return Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? null;
 }
 
-function sessionResponse(session: {
-  access_token: string;
-  refresh_token: string;
-  expires_at?: number;
-  expires_in: number;
-}, user: { id: string; email?: string; user_metadata?: Record<string, unknown> | null }) {
+function bearerToken(request: Request): string | null {
+  const authorization = request.headers.get("authorization") ?? "";
+  if (!authorization.toLowerCase().startsWith("bearer ")) return null;
+  const token = authorization.slice(7).trim();
+  return token.length > 0 ? token : null;
+}
+
+function sessionResponse(
+  session: { access_token: string; refresh_token: string; expires_at?: number; expires_in: number },
+  user: { id: string; email?: string; user_metadata?: Record<string, unknown> | null },
+) {
   const metadata = user.user_metadata ?? {};
   const displayName = [metadata.display_name, metadata.full_name, metadata.name]
     .find((value) => typeof value === "string" && value.trim().length > 0);
@@ -84,10 +89,9 @@ Deno.serve(async (request: Request) => {
   }
 
   if (path.endsWith("/api/v1/auth/logout") && request.method === "POST") {
-    const authorization = request.headers.get("authorization") ?? "";
-    const match = authorization.match(/^Bearer\\s+(.+)$/i);
-    if (!match) return json({ error: "unauthorized" }, 401);
-    const { data, error } = await client.auth.getUser(match[1]);
+    const token = bearerToken(request);
+    if (!token) return json({ error: "unauthorized" }, 401);
+    const { data, error } = await client.auth.getUser(token);
     if (error || !data.user?.id) return json({ error: "unauthorized" }, 401);
 
     const response = await fetch(`${url}/auth/v1/logout`, {
@@ -99,10 +103,9 @@ Deno.serve(async (request: Request) => {
   }
 
   if (path.endsWith("/api/v1/me") && request.method === "GET") {
-    const authorization = request.headers.get("authorization") ?? "";
-    const match = authorization.match(/^Bearer\\s+(.+)$/i);
-    if (!match) return json({ error: "unauthorized" }, 401);
-    const { data: authData, error: authError } = await client.auth.getUser(match[1]);
+    const token = bearerToken(request);
+    if (!token) return json({ error: "unauthorized" }, 401);
+    const { data: authData, error: authError } = await client.auth.getUser(token);
     if (authError || !authData.user?.id) return json({ error: "unauthorized" }, 401);
 
     const userClient = createClient(url, key, {
