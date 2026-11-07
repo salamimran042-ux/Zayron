@@ -28,7 +28,7 @@ class CompleteRequest(BaseModel):
 
 
 class FailRequest(BaseModel):
-    worker_id: str = Field(min_length=3, max_length=100, pattern="^[A-Z0-9_]+$")
+    worker_id: str = Field(min_length=3, max_length=100, pattern="^[a-zA-Z0-9._-]+$")
     error_code: str = Field(min_length=1, max_length=80, pattern="^[A-Z0-9_]+$")
     retry_after_seconds: int = Field(default=0, ge=0, le=86_400)
 
