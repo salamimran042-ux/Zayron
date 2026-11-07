@@ -9,20 +9,21 @@ Implemented:
 - Process-level `GET /health` endpoint
 - Safe `GET /config/status` endpoint that reports integration configuration presence without exposing credentials
 - Environment-based settings with secret-typed credential fields
+- Database integration boundary with a typed adapter contract and guarded database-URL access
 - Automated health and configuration tests
 - Python package metadata and development dependencies
 - Container definition for a future Cloud Run deployment
 - Separate backend CI workflow
 
 Not implemented or connected yet:
-- Supabase authentication or database connection
+- A live Supabase authentication or PostgreSQL connection (the database adapter contract is prepared, but no driver or credentials are connected)
 - Private file storage
 - AI provider integrations
 - Cloud Tasks or background workers
 - Credits, billing, or entitlement enforcement
 - Production deployment
 
-`/health` confirms only that the API process responds. `/config/status` reports whether integration settings are present; it does not test connectivity or claim that a service is working.
+`/health` confirms only that the API process responds. `/config/status` reports whether integration settings are present; it does not test connectivity or claim that a service is working. The database module defines the adapter contract and keeps secret URL access at the driver boundary, but it does not open a connection or claim database readiness.
 
 ## Configuration
 
