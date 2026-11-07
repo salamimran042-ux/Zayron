@@ -45,9 +45,13 @@ async def apply_migrations(pool: Pool, directory: Path | None = None) -> list[st
     applied_now: list[str] = []
 
     async with pool.acquire() as connection:
+        await connection.execute("CREATE SCHEMA IF NOT EXISTS zayron_private")
+        await connection.execute(
+            "REVOKE ALL ON SCHEMA zayron_private FROM PUBLIC, anon, authenticated, service_role"
+        )
         await connection.execute(
             """
-            CREATE TABLE IF NOT EXISTS public.zayron_schema_migrations (
+            CREATE TABLE IF NOT EXISTS zayron_private.schema_migrations (
                 version text PRIMARY KEY,
                 checksum text NOT NULL,
                 applied_at timestamptz NOT NULL DEFAULT now()
@@ -59,7 +63,7 @@ async def apply_migrations(pool: Pool, directory: Path | None = None) -> list[st
             async with connection.transaction():
                 await connection.execute("SELECT pg_advisory_xact_lock($1)", _LOCK_ID)
                 existing = await connection.fetchrow(
-                    "SELECT checksum FROM public.zayron_schema_migrations WHERE version = $1",
+                    "SELECT checksum FROM zayron_private.schema_migrations WHERE version = $1",
                     migration.version,
                 )
                 if existing is not None:
@@ -72,7 +76,7 @@ async def apply_migrations(pool: Pool, directory: Path | None = None) -> list[st
                 await connection.execute(migration.sql)
                 await connection.execute(
                     """
-                    INSERT INTO public.zayron_schema_migrations (version, checksum)
+                    INSERT INTO zayron_private.schema_migrations (version, checksum)
                     VALUES ($1, $2)
                     """,
                     migration.version,
