@@ -96,6 +96,14 @@ jobs:
             adb wait-for-device
             adb shell 'i=0; until cmd package list packages >/dev/null 2>&1; do i=$((i+1)); [ "$i" -lt 24 ] || exit 1; sleep 5; done'
             adb shell cmd package list packages >/dev/null
+            # This disposable CI emulator has no user-installed apps or production data.
+            # Disable ADB package verification so transient verifier/network timeouts
+            # cannot prevent the instrumentation APKs from being installed.
+            adb shell settings put global verifier_verify_adb_installs 0
+            adb shell settings put global package_verifier_enable 0
+            adb shell settings put global verifier_timeout 0
+            adb shell settings get global verifier_verify_adb_installs
+            adb shell settings get global package_verifier_enable
             gradle --no-daemon :app:connectedDebugAndroidTest -x :app:assembleDebug -x :app:assembleDebugAndroidTest
 
   verify-project-integrity:
