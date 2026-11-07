@@ -12,5 +12,5 @@ def test_health_reports_api_process_is_running() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "zayron-api",
-        "version": "0.1.0",
+        "version": "0.2.0",
     }
