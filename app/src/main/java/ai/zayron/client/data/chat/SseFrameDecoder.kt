@@ -3,9 +3,10 @@ package ai.zayron.client.data.chat
 /**
  * Incrementally decodes Server-Sent Events from arbitrary network chunks.
  *
- * Handles LF, CRLF and CR line endings, multi-line data fields, comments,
- * multiple frames per chunk and a final unterminated frame at end-of-stream.
- * Call [append] with endOfInput=true when the response body reaches EOF.
+ * Handles an optional UTF-8 BOM, LF, CRLF and CR line endings, multi-line data
+ * fields, comments, multiple frames per chunk and a final unterminated frame
+ * at end-of-stream. Call [append] with endOfInput=true when the response body
+ * reaches EOF.
  */
 class SseFrameDecoder {
     private val pendingLine = StringBuilder()
@@ -13,11 +14,19 @@ class SseFrameDecoder {
     private var eventName: String? = null
     private var hasData = false
     private var skipNextLf = false
+    private var atStreamStart = true
 
     fun append(chunk: String, endOfInput: Boolean = false): List<ChatStreamEvent> {
         val events = mutableListOf<ChatStreamEvent>()
 
         chunk.forEach { character ->
+            // The SSE format permits one UTF-8 BOM at the beginning of a stream.
+            // Ignore it even when it arrives in a chunk by itself.
+            if (atStreamStart) {
+                atStreamStart = false
+                if (character == '\uFEFF') return@forEach
+            }
+
             if (skipNextLf) {
                 skipNextLf = false
                 if (character == '\n') return@forEach
