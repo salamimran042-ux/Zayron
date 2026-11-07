@@ -16,7 +16,7 @@ Configuration status reveals presence only, never secret values.
 
 ## Database platform foundation
 
-The first versioned migration creates the platform's core persistence tables:
+The versioned migrations create the platform's core persistence tables:
 
 - `user_profiles` for user preferences and profile metadata.
 - `conversations` and `messages` for account-owned chat history. A composite foreign key ensures a message's `user_id` matches its conversation owner.
@@ -36,6 +36,12 @@ pytest
 Migrations are not run automatically at API startup. The runner takes a PostgreSQL transaction-scoped advisory lock, applies each migration atomically, records a SHA-256 checksum, and refuses to continue if an already-applied migration has been edited. Add a new numbered SQL file for every future schema change; do not rewrite an applied migration.
 
 The API connects with a server-side database role. Every future data-access query must scope reads and writes by the authenticated `user_id`; the schema's composite ownership constraint additionally prevents cross-account message/conversation links. Do not expose the database connection or privileged credentials to Android. Production row-level security and database-role policy must be designed and verified before multi-tenant production launch.
+
+## Authenticated platform API
+
+The API exposes account-scoped profile, conversation, message, job, entitlement and usage-read endpoints. Job creation is idempotent when an `Idempotency-Key` is supplied. A client can cancel a job only while it remains queued. The server never trusts a client-supplied account ID; ownership comes from the verified JWT subject.
+
+The job API currently creates and tracks queued work only. A worker, queue-claim lease, provider execution, file storage and actual AI generation are not connected. Usage events and entitlement grants are server-owned and cannot be written through client routes.
 
 ## Authentication foundation
 

@@ -25,6 +25,24 @@ Supabase Auth owns password validation, refresh-token rotation and session revoc
 
 Still outstanding: configure a real Supabase project, review email-confirmation/password policies, deploy the API over HTTPS, implement Android login/refresh/logout and concurrent refresh coordination, then test the full device-to-provider lifecycle.
 
+## Implemented platform endpoints (source; database required)
+
+| Route | Purpose | Access |
+|---|---|---|
+| `GET/PATCH /api/v1/profile` | Read/update the signed-in user's profile preferences | Authenticated |
+| `GET/POST /api/v1/conversations` | List and create owned conversations | Authenticated |
+| `GET/PATCH/DELETE /api/v1/conversations/{id}` | Read, rename/archive, or delete an owned conversation | Authenticated |
+| `GET/POST /api/v1/conversations/{id}/messages` | Read messages or append a user message | Authenticated |
+| `GET/POST /api/v1/jobs` | List jobs or enqueue a supported tool job | Authenticated |
+| `GET /api/v1/jobs/{id}` | Read an owned job | Authenticated |
+| `POST /api/v1/jobs/{id}/cancel` | Cancel a queued job | Authenticated |
+| `GET /api/v1/entitlements` | Read plan/access state (defaults to free) | Authenticated |
+| `GET /api/v1/usage` | Read recent usage totals and events | Authenticated |
+
+Every database query is scoped by the verified account UUID. Missing or foreign-owned records return the same not-found response. Job creation accepts an optional `Idempotency-Key`; retries with the same key return the existing job rather than creating duplicates. User-facing APIs cannot write their own usage records or entitlement grants.
+
+These routes require PostgreSQL and the explicit migrations. They are source implementation only; no live database, worker, billing integration, storage service, or AI provider is connected. Queued jobs remain queued until a separately secured worker is implemented.
+
 ## Remaining proposed API surface
 
 - `POST /api/v1/auth/register`: account creation and email verification.
