@@ -20,4 +20,9 @@ CREATE POLICY zayron_profiles_insert_authenticated_own
         user_id = (SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid)
     );
 
+-- The function is owned by this deliberately restricted NOLOGIN role.
+GRANT zayron_profile_rpc_owner TO postgres;
+SET LOCAL ROLE zayron_profile_rpc_owner;
 ALTER FUNCTION public.zayron_get_my_profile() SECURITY INVOKER;
+RESET ROLE;
+REVOKE zayron_profile_rpc_owner FROM postgres;
