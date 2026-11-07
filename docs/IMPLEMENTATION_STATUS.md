@@ -25,7 +25,9 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Safe API error mapping converts documented server error codes and HTTP statuses into user-facing messages without exposing raw server response bodies.
 - Automated JVM unit tests cover safe API error mapping, chat history serialization compatibility, stream decoding and secure access-token expiry behavior.
 - Authentication domain contract separates non-secret session profile data, stable failure categories and repository operations from the UI.
-- Session credentials have an Android Keystore AES-256-GCM encryption foundation, stored as ciphertext in app-private no-backup storage with no plaintext fallback.
+- Backend authentication endpoints now proxy Supabase password login, refresh-token rotation and logout; provider responses are validated and mapped to safe error codes. Mocked backend tests cover these routes and malformed/provider failure cases.
+- Android BackendAuthRepository now implements login, encrypted session persistence, session restoration, serialized refresh and logout. Its HTTP boundary is injectable for JVM tests; the production API base URL remains intentionally empty until deployment.
+- Session credentials and minimal profile metadata are stored with AES-256-GCM using a non-exportable Android Keystore key in app-private no-backup storage. The encrypted file format supports reading the previous token-only format.
 - A secure chat access-token provider reads the encrypted session and refuses to supply an expired access token.
 - Android instrumentation tests cover Keystore-backed save/read round-trips, plaintext absence, ciphertext tamper rejection, cleanup and fresh-session recreation. The instrumentation job passed in workflow runs #33, #35 and #36; the #36 log records four tests started and a successful Gradle test task.
 - Backend URL and relative API-path policy is isolated into testable helpers; JVM tests cover HTTPS-only configuration, base-path resolution and rejection of network-path references, encoded traversal examples, absolute, query, fragment and backslash paths.
@@ -33,8 +35,8 @@ A successful APK build proves compilation and packaging only; it does not prove 
 
 ## Partial / preparation only
 
-- Sign-in screen: visual shell only; no account is created and no credentials are submitted.
-- Authentication repository: interface and typed domain models are prepared, and encrypted session storage is implemented as a client foundation. There is still no concrete remote login, refresh-token rotation, logout request or server-backed session restoration.
+- Sign-in screen: visual shell only; its button remains disabled until a deployed HTTPS backend is configured and the end-to-end device flow is verified.
+- Authentication: server and Android repository flows are implemented and covered by mocked tests, but no real Supabase project, backend deployment or production URL is configured. Registration, password reset, live email-confirmation behavior and production abuse/rate-limit review remain outstanding.
 - AI Chat: local message history, role-aware bubbles, delivery states, cancellation when clearing an active conversation, streamed assistant-delta presentation, and safe user-facing service errors are wired to the remote chat boundary. When the backend is not configured or no valid session exists, messages remain explicitly local-only; no fake assistant response is generated.
 - Chat request privacy: each request includes the current user message plus only earlier messages marked SENT by the backend. Local-only and failed messages are never uploaded implicitly. Access-token reads use the IO dispatcher and the encrypted Android Keystore session store; tokens are not exposed to Compose state.
 - Chat network transport: the OkHttp SSE adapter sends authenticated requests to the proposed `/api/v1/chat/stream` route and requires a terminal `message.completed` event before reporting success. MockWebServer tests exercise event streaming, bearer-token attachment, missing-token rejection and HTTP error handling. The UI integration is client-side only: `AiServiceConfig.API_BASE_URL` remains empty and no production backend or login service is deployed.
@@ -48,9 +50,9 @@ A successful APK build proves compilation and packaging only; it does not prove 
 ## Recent local UI milestones (not yet backend-connected)\n\n- Image editing now includes a local mask-preparation canvas; mask persistence/export and image transformation remain outstanding.\n- Document AI now inspects selected file metadata, previews bounded plain-text content, extracts bounded DOCX body text and selectable PDF text locally, and searches the extracted preview on-device with previous/next match navigation. Scanned-PDF OCR and all AI/document-backend features remain outstanding.\n\n## Not yet implemented
 
 - Production backend deployment and configured HTTPS API base URL.
-- HTTPS API authentication, remote login, automatic token refresh and server-side session revocation.
-- Backend-defined access/refresh token format, expiry, rotation, revocation and logout behavior.
-- User registration, sign-in, password reset and account management.
+- Production HTTPS deployment and live Supabase credentials.
+- Android sign-in screen wiring and device-to-provider acceptance testing; registration, password reset and account management.
+- Automatic refresh-and-retry for arbitrary API requests, plus production abuse/rate-limit review.
 - Credits, usage metering, subscriptions, billing and entitlement enforcement.
 - Secure file upload, storage, deletion and job status tracking.
 - Provider integrations and server-side secrets management.
@@ -66,7 +68,7 @@ A successful APK build proves compilation and packaging only; it does not prove 
 - Network calls run on the IO dispatcher and use bounded timeouts.
 - HTTP error responses are represented separately from transport failures. Response bodies are parsed carefully and are not exposed as raw user-facing error text.
 - No body/header logging interceptor is installed. Never embed provider API keys or service credentials in the APK.
-- The Android client has a Keystore-backed encrypted session-storage foundation. Its device-side instrumentation suite passed in workflow #53; remote login, refresh coordination, logout/revocation and backend integration remain outstanding.
+- The Android client stores access/refresh tokens and minimal profile metadata only in Keystore-backed AES-GCM ciphertext. The repository serializes login/refresh/logout operations; live service verification remains outstanding because no backend deployment or Supabase project is configured.
 - The chat preview is stored in app-private local preferences. It is not encrypted chat backup, account sync or a substitute for a secure backend.
 - Debug APKs from separate GitHub-hosted runners may have different debug signing certificates. An update may therefore require a matching signing key or uninstalling the previous debug build (which can erase local app data).
 - Do not label a feature as AI-powered until the complete backend path has been integrated and tested.

@@ -80,6 +80,8 @@ class AndroidKeystoreSessionStoreTest {
         assertTrue(expected.accessToken == actual.accessToken)
         assertTrue(expected.refreshToken == actual.refreshToken)
         assertTrue(expected.accessExpiresAtEpochSeconds == actual.accessExpiresAtEpochSeconds)
+        assertTrue(expected.email == actual.email)
+        assertTrue(expected.displayName == actual.displayName)
     }
 
     private fun ByteArray.containsSequence(sequence: ByteArray): Boolean {

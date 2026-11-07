@@ -87,7 +87,8 @@ class AndroidKeystoreSessionStore(context: Context) : SecureSessionStore {
             require(sessionFile.length() in MIN_ENCRYPTED_FILE_LENGTH..MAX_ENCRYPTED_FILE_LENGTH)
             val encrypted = FileInputStream(sessionFile).use { it.readBytes() }
             DataInputStream(ByteArrayInputStream(encrypted)).use { data ->
-                require(data.readInt() == FORMAT_VERSION)
+                val fileVersion = data.readInt()
+                require(fileVersion == LEGACY_FORMAT_VERSION || fileVersion == FORMAT_VERSION)
                 val ivLength = data.readInt()
                 require(ivLength == GCM_IV_LENGTH)
                 val iv = ByteArray(ivLength).also(data::readFully)

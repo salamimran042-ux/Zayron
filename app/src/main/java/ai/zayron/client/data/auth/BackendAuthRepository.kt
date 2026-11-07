@@ -12,7 +12,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 /** Testable HTTP boundary for the account/session API. */
-internal interface AuthApi {
+interface AuthApi {
     suspend fun post(path: String, body: JSONObject, accessToken: String? = null): NetworkResult<String>
     suspend fun get(path: String, accessToken: String): NetworkResult<String>
 }
@@ -93,13 +93,14 @@ class BackendAuthRepository(
         }
     }
 
-    override suspend fun signOut() = sessionMutex.withLock {
+    override suspend fun signOut(): Unit = sessionMutex.withLock {
         val tokens = withContext(Dispatchers.IO) { sessionStore.read() }
         try {
             if (tokens != null) api.post(LOGOUT_PATH, JSONObject(), tokens.accessToken)
         } finally {
             clearSession()
         }
+        Unit
     }
 
     private suspend fun refreshLocked(current: SessionTokens): SessionTokens? {

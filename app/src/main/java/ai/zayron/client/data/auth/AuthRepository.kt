@@ -39,11 +39,11 @@ data class SignInCredentials(
 )
 
 /**
- * Contract for a future backend-backed authentication implementation.
+ * Contract for backend-backed authentication.
  *
- * No concrete implementation is provided yet: the backend is not deployed and
- * its token lifetime, refresh rotation, revocation and logout semantics must be
- * agreed before secure session storage or network authentication is enabled.
+ * BackendAuthRepository implements login, secure session persistence, session
+ * restoration, serialized refresh and logout. The service remains unavailable
+ * until a real HTTPS backend and Supabase project are configured.
  */
 interface AuthRepository {
     suspend fun signIn(credentials: SignInCredentials): AuthResult
