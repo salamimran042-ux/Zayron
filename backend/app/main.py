@@ -4,6 +4,8 @@ from typing import AsyncIterator
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.auth.routes import router as auth_router
+from app.auth.token_verifier import SupabaseTokenVerifier
 from app.core.config import get_settings
 from app.db.pool import DatabaseRuntime
 
@@ -15,6 +17,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     database = DatabaseRuntime()
     await database.open(settings)
     application.state.database = database
+    application.state.token_verifier = SupabaseTokenVerifier(settings)
     try:
         yield
     finally:
@@ -27,6 +30,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+app.include_router(auth_router)
 
 
 @app.get("/health", tags=["operations"])
