@@ -83,25 +83,35 @@ jobs:
       - name: Prebuild app and instrumentation APKs before emulator startup
         run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
 
-      - name: Run Android Keystore tests on lightweight emulator
+      - name: Run Android Keystore tests on a resource-bounded emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data -camera-back none -memory 2048 -cores 2 -partition-size 2048
           disable-animations: true
           emulator-boot-timeout: 1800
           script: |
             set -eu
             adb wait-for-device
             echo "Waiting for Android to finish booting..."
-            i=0; while [ "$i" -lt 90 ] && [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' || true)" != "1" ]; do sleep 5; i=$((i + 1)); done; if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' || true)" != "1" ]; then echo "Emulator did not complete boot within 7.5 minutes."; adb devices -l || true; exit 1; fi
+            i=0; while [ "$i" -lt 90 ] && [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' || true)" != "1" ]; do sleep 5; i=$((i + 1)); done
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' || true)" != "1" ]; then echo "Emulator did not complete boot within 7.5 minutes."; adb devices -l || true; exit 1; fi
             adb shell getprop ro.build.version.sdk
             adb shell pm list packages >/dev/null
             adb devices -l
-            gradle --no-daemon :app:connectedDebugAndroidTest -x :app:assembleDebug -x :app:assembleDebugAndroidTest || { echo "Instrumentation failed; collecting emulator health diagnostics before shutdown."; adb devices -l || true; adb shell getprop sys.boot_completed || true; adb shell getprop ro.build.version.sdk || true; adb shell df -h /data || true; adb shell dumpsys package || true; adb logcat -b crash -d -t 3000 || true; adb logcat -b system -d -t 3000 || true; exit 1; }
+            gradle --no-daemon :app:connectedDebugAndroidTest -x :app:assembleDebug -x :app:assembleDebugAndroidTest || {
+              echo "Instrumentation failed; collecting focused emulator diagnostics."
+              adb devices -l || true
+              adb shell getprop sys.boot_completed || true
+              adb shell getprop ro.build.version.sdk || true
+              adb shell df -h /data || true
+              adb logcat -b crash -d -t 1000 || true
+              adb logcat -b system -d -t 1000 || true
+              exit 1
+            }
 
   verify-project-integrity:
     name: Zayron project identity and source checks
