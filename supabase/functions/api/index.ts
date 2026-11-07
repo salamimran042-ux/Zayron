@@ -65,6 +65,29 @@ Deno.serve(async (request: Request) => {
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
   });
 
+  if (path.endsWith("/api/v1/auth/signup") && request.method === "POST") {
+    let body: Record<string, unknown>;
+    try { body = await request.json(); } catch { return json({ error: "invalid_json" }, 400); }
+    const email = typeof body.email === "string" ? body.email.trim() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    const displayName = typeof body.display_name === "string" ? body.display_name.trim() : "";
+    if (!email || !password || password.length > 1024 || displayName.length > 80) {
+      return json({ error: "invalid_signup_details" }, 400);
+    }
+
+    const { data, error } = await client.auth.signUp({
+      email,
+      password,
+      options: { data: displayName ? { display_name: displayName } : {} },
+    });
+    if (error || !data.user) {
+      console.error("Signup request rejected", error?.status ?? "unknown");
+      return json({ error: "signup_unavailable" }, 400);
+    }
+    if (data.session) return json(sessionResponse(data.session, data.user));
+    return json({ confirmation_required: true, email: data.user.email ?? email }, 202);
+  }
+
   if (path.endsWith("/api/v1/auth/login") && request.method === "POST") {
     let body: Record<string, unknown>;
     try { body = await request.json(); } catch { return json({ error: "invalid_json" }, 400); }
@@ -73,7 +96,10 @@ Deno.serve(async (request: Request) => {
     if (!email || !password || password.length > 1024) return json({ error: "invalid_credentials" }, 400);
 
     const { data, error } = await client.auth.signInWithPassword({ email, password });
-    if (error || !data.session || !data.user) return json({ error: "invalid_credentials" }, 401);
+    if (error || !data.session || !data.user) {
+      const unverified = error?.message.toLowerCase().includes("email not confirmed") ?? false;
+      return json({ error: unverified ? "email_not_verified" : "invalid_credentials" }, 401);
+    }
     return json(sessionResponse(data.session, data.user));
   }
 
