@@ -47,7 +47,7 @@ class _Connection:
 
     async def execute(self, query: str, *args: object) -> str:
         self.executed.append((query, args))
-        if query.lstrip().startswith("INSERT INTO public.zayron_schema_migrations"):
+        if query.lstrip().startswith("INSERT INTO zayron_private.schema_migrations"):
             self.applied[str(args[0])] = str(args[1])
         return "OK"
 
@@ -88,3 +88,4 @@ async def test_apply_migrations_is_idempotent(tmp_path: Path) -> None:
     assert first == ["0001_core.sql"]
     assert second == []
     assert pool.connection.applied["0001_core.sql"]
+    assert any("CREATE SCHEMA IF NOT EXISTS zayron_private" in query for query, _ in pool.connection.executed)
