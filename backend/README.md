@@ -14,7 +14,8 @@ Implemented:
 - Supabase asymmetric JWT verification boundary using the project's published JWKS, strict issuer/audience checks, and an explicit signing-algorithm allowlist
 - FastAPI HTTP Bearer authentication dependency wired to the Supabase verifier
 - Protected `GET /api/v1/me` endpoint returning only the verified user ID and optional role
-- Authentication tests for missing, unconfigured, invalid, expired, and valid tokens
+- Authentication tests for missing, unconfigured, invalid, expired, future-issued, oversized, and valid tokens
+- Strict Supabase URL-origin validation to prevent credentials, paths, query strings, fragments, and malformed ports from changing the trusted JWKS authority
 - Python package metadata and development dependencies
 - Container definition for a future Cloud Run deployment
 - Separate backend CI workflow

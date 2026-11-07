@@ -50,16 +50,33 @@ class SupabaseTokenVerifier:
     def _build_issuer(supabase_url: str | None) -> str | None:
         if not supabase_url or not supabase_url.strip():
             return None
-        parsed = urlparse(supabase_url.strip().rstrip("/"))
+        parsed = urlparse(supabase_url.strip())
+        try:
+            parsed.port  # Validate malformed ports before accepting the configured authority.
+        except ValueError as exc:
+            raise ValueError("Supabase URL contains an invalid port") from exc
         local_http = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
-        if not parsed.hostname or (parsed.scheme != "https" and not (local_http and parsed.scheme == "http")):
-            raise ValueError("Supabase URL must use HTTPS (HTTP is allowed only for localhost)")
+        if (
+            not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or (parsed.scheme != "https" and not (local_http and parsed.scheme == "http"))
+        ):
+            raise ValueError(
+                "Supabase URL must be a clean HTTPS origin "
+                "(HTTP is allowed only for localhost)"
+            )
         return f"{parsed.scheme}://{parsed.netloc}/auth/v1"
 
     def verify(self, token: str) -> AuthenticatedUser:
         """Return an identity only after signature and standard claims validate."""
         if not token or not token.strip():
             raise AuthenticationError("Bearer token is missing")
+        if len(token) > 16_384:
+            raise AuthenticationError("Bearer token exceeds the maximum accepted size")
         if self._issuer is None or self._jwks_client is None:
             raise AuthenticationError("Supabase token verification is not configured")
 

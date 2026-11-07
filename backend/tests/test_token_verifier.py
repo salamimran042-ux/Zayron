@@ -103,3 +103,53 @@ def test_rejects_non_https_remote_supabase_url() -> None:
         SupabaseTokenVerifier(
             Settings(supabase_url="http://zayron-test.supabase.co", _env_file=None)
         )
+
+
+@pytest.mark.parametrize(
+    "supabase_url",
+    [
+        "https://user@zayron-test.supabase.co",
+        "https://user:password@zayron-test.supabase.co",
+        "https://zayron-test.supabase.co/custom/path",
+        "https://zayron-test.supabase.co?redirect=attacker.example",
+        "https://zayron-test.supabase.co#fragment",
+        "https://zayron-test.supabase.co:invalid",
+    ],
+)
+def test_rejects_supabase_urls_that_are_not_clean_origins(supabase_url: str) -> None:
+    with pytest.raises(ValueError):
+        SupabaseTokenVerifier(Settings(supabase_url=supabase_url, _env_file=None))
+
+
+def test_rejects_oversized_bearer_token(signing_keys) -> None:
+    _, public_key, _ = signing_keys
+    verifier = SupabaseTokenVerifier(
+        Settings(supabase_url="https://zayron-test.supabase.co", _env_file=None),
+        key_resolver=StaticKeyResolver(public_key),
+    )
+
+    with pytest.raises(AuthenticationError, match="maximum accepted size"):
+        verifier.verify("a" * 16_385)
+
+
+def test_rejects_token_with_future_issued_at(signing_keys) -> None:
+    private_key, public_key, _ = signing_keys
+    verifier = SupabaseTokenVerifier(
+        Settings(supabase_url="https://zayron-test.supabase.co", _env_file=None),
+        key_resolver=StaticKeyResolver(public_key),
+    )
+
+    future_iat = datetime.now(timezone.utc) + timedelta(minutes=5)
+    with pytest.raises(AuthenticationError, match="invalid"):
+        verifier.verify(make_token(private_key, iat=future_iat))
+
+
+def test_rejects_wrong_audience(signing_keys) -> None:
+    private_key, public_key, _ = signing_keys
+    verifier = SupabaseTokenVerifier(
+        Settings(supabase_url="https://zayron-test.supabase.co", _env_file=None),
+        key_resolver=StaticKeyResolver(public_key),
+    )
+
+    with pytest.raises(AuthenticationError, match="invalid"):
+        verifier.verify(make_token(private_key, aud="another-service"))
