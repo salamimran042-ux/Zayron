@@ -2,6 +2,7 @@ package ai.zayron.client
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -239,6 +240,10 @@ private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
     var mode by rememberSaveable { mutableStateOf("Home") }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    BackHandler(enabled = mode != "Home") {
+        mode = "Home"
+    }
 
     val sections = listOf(
         "YOUR WORKSPACE" to listOf(
