@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -49,6 +50,7 @@ import ai.zayron.client.data.auth.BackendAuthRepository
 import ai.zayron.client.data.auth.SignInCredentials
 import ai.zayron.client.ui.chat.ChatScreen
 import ai.zayron.client.ui.dashboard.DashboardScreen
+import ai.zayron.client.ui.settings.SettingsScreen
 import ai.zayron.client.ui.tools.ToolWorkspaceScreen
 import kotlinx.coroutines.launch
 
@@ -252,6 +254,10 @@ private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
             "Document AI" to "Document AI",
             "Voice Assistant" to "Voice Assistant"
         )
+        ,
+        "ACCOUNT & SETTINGS" to listOf(
+            "Settings" to "Settings"
+        )
     )
 
     fun iconFor(route: String) = when (route) {
@@ -261,6 +267,7 @@ private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
         "Image Editing" -> Icons.Default.Image
         "App Builder" -> Icons.Default.PhoneAndroid
         "Document AI" -> Icons.Default.Description
+        "Settings" -> Icons.Default.Settings
         else -> Icons.Default.Mic
     }
 
@@ -360,6 +367,11 @@ private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
                         modifier = Modifier.fillMaxSize()
                     )
                     "AI Chat" -> ChatScreen(Modifier.fillMaxSize())
+                    "Settings" -> SettingsScreen(
+                        darkTheme = darkTheme,
+                        onToggleTheme = onToggleTheme,
+                        modifier = Modifier.fillMaxSize()
+                    )
                     else -> ToolWorkspaceScreen(mode = mode, modifier = Modifier.fillMaxSize())
                 }
             }
