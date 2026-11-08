@@ -126,3 +126,26 @@ jobs:
           grep -Fq 'applicationId = "ai.zayron.client"' app/build.gradle.kts
           grep -Fq 'android:label="Zayron AI"' app/src/main/AndroidManifest.xml
           echo "Zayron AI package, label, and required source files verified."
+
+  backend:
+    name: Python backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out committed source
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend and test dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run backend tests
+        run: python -m pytest

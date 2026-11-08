@@ -1,25 +1,12 @@
-name: Zayron AI Backend CI
+name: Zayron AI Backend CI (manual only)
 
+# Backend tests now run inside the unified Zayron AI build workflow.
+# Keep this manual entry point for isolated diagnosis only.
 on:
-  push:
-    branches:
-      - main
-      - 'feature/**'
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend-ci.yml'
-  pull_request:
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend-ci.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: backend-ci-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   test:
@@ -29,18 +16,15 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - name: Check out source
+      - name: Check out committed source
         uses: actions/checkout@v4
-
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/pyproject.toml
-
       - name: Install backend and test dependencies
         run: python -m pip install -e ".[dev]"
-
       - name: Run backend tests
         run: python -m pytest
