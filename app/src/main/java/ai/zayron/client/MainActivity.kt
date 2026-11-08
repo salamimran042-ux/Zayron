@@ -6,13 +6,24 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -219,53 +230,133 @@ private fun AuthFailureCode.toUserMessage(): String = when (this) {
 @Composable
 private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
     var mode by rememberSaveable { mutableStateOf("Home") }
-    var menu by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ZayronLogo(36)
-                        Spacer(Modifier.width(9.dp))
+    val sections = listOf(
+        "YOUR WORKSPACE" to listOf(
+            "Home" to "Home",
+            "Conversational AI" to "AI Chat"
+        ),
+        "CREATE & EDIT" to listOf(
+            "Image-to-Video" to "Video Generation",
+            "AI Inpaint & Eraser" to "Image Editing",
+            "AI App Builder" to "App Builder"
+        ),
+        "READ & LISTEN" to listOf(
+            "Document AI" to "Document AI",
+            "Voice Assistant" to "Voice Assistant"
+        )
+    )
+
+    fun iconFor(route: String) = when (route) {
+        "Home" -> Icons.Default.Home
+        "AI Chat" -> Icons.Default.ChatBubbleOutline
+        "Video Generation" -> Icons.Default.VideoLibrary
+        "Image Editing" -> Icons.Default.Image
+        "App Builder" -> Icons.Default.PhoneAndroid
+        "Document AI" -> Icons.Default.Description
+        else -> Icons.Default.Mic
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 8.dp, top = 24.dp, bottom = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ZayronLogo(44)
+                        Spacer(Modifier.width(12.dp))
                         Column {
                             Text("ZAYRON AI", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            Text("Think Beyond Limits.", style = MaterialTheme.typography.labelSmall)
+                            Text("Your AI workspace", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                },
-                actions = {
-                    IconButton(onClick = onToggleTheme) {
-                        Icon(
-                            imageVector = if (darkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
-                            contentDescription = if (darkTheme) "Switch to light theme" else "Switch to dark theme"
+                    HorizontalDivider()
+                    sections.forEach { (heading, destinations) ->
+                        Text(
+                            heading,
+                            modifier = Modifier.padding(start = 12.dp, top = 20.dp, bottom = 8.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
                         )
-                    }
-                    Box {
-                        OutlinedButton(onClick = { menu = true }, modifier = Modifier.padding(end = 8.dp)) {
-                            Text(mode, maxLines = 1)
-                            Icon(Icons.Default.ArrowDropDown, "Select workspace")
+                        destinations.forEach { (label, route) ->
+                            NavigationDrawerItem(
+                                icon = { Icon(iconFor(route), contentDescription = null) },
+                                label = { Text(label) },
+                                selected = mode == route,
+                                onClick = {
+                                    mode = route
+                                    scope.launch { drawerState.close() }
+                                },
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
                         }
-                        DropdownMenu(menu, { menu = false }) {
-                            ZayronModes.forEach { item ->
-                                DropdownMenuItem(text = { Text(item) }, onClick = { mode = item; menu = false })
+                    }
+                    Spacer(Modifier.height(20.dp))
+                    HorizontalDivider()
+                    Text(
+                        "More workspace areas will appear here as they are completed.",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Open navigation")
+                        }
+                    },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ZayronLogo(34)
+                            Spacer(Modifier.width(9.dp))
+                            Column {
+                                Text("ZAYRON AI", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                Text("Think Beyond Limits.", style = MaterialTheme.typography.labelSmall)
                             }
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (mode) {
-                "Home" -> DashboardScreen(
-                    onToolSelected = { selectedTool -> mode = selectedTool },
-                    modifier = Modifier.fillMaxSize()
+                    },
+                    actions = {
+                        IconButton(onClick = onToggleTheme) {
+                            Icon(
+                                imageVector = if (darkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                contentDescription = if (darkTheme) "Switch to light theme" else "Switch to dark theme"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
                 )
-                "AI Chat" -> ChatScreen(Modifier.fillMaxSize())
-                else -> ToolWorkspaceScreen(mode = mode, modifier = Modifier.fillMaxSize())
+            },
+            containerColor = MaterialTheme.colorScheme.background
+        ) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                when (mode) {
+                    "Home" -> DashboardScreen(
+                        onToolSelected = { selectedTool -> mode = selectedTool },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    "AI Chat" -> ChatScreen(Modifier.fillMaxSize())
+                    else -> ToolWorkspaceScreen(mode = mode, modifier = Modifier.fillMaxSize())
+                }
             }
         }
     }
