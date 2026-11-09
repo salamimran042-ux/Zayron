@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import ai.zayron.client.ui.tools.ToolWorkspaceScreen
+import ai.zayron.client.data.skills.SkillIntentRouter
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 private val ChatPurple = Color(0xFF5146D8)
@@ -38,13 +39,20 @@ fun ChatScreen(
     var draft by rememberSaveable { mutableStateOf("") }
     var confirmClear by remember { mutableStateOf(false) }
     var activeSkill by rememberSaveable { mutableStateOf<String?>(null) }
+    var activeSkillRequest by rememberSaveable { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
     val messages = chatViewModel.messages
 
     val sendDraft = {
         val message = draft.trim()
         if (message.isNotEmpty() && !chatViewModel.isSending) {
-            chatViewModel.sendMessage(message)
+            val routedSkill = SkillIntentRouter.classify(message)
+            if (routedSkill != null) {
+                activeSkill = routedSkill.workspaceTitle
+                activeSkillRequest = message
+            } else {
+                chatViewModel.sendMessage(message)
+            }
             draft = ""
         }
     }
@@ -79,7 +87,7 @@ fun ChatScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (activeSkill != null) {
-                IconButton(onClick = { activeSkill = null }) {
+                IconButton(onClick = { activeSkill = null; activeSkillRequest = null }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to conversation")
                 }
             }
@@ -111,6 +119,7 @@ fun ChatScreen(
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 ToolWorkspaceScreen(
                     mode = activeSkill!!,
+                    initialRequest = activeSkillRequest,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -137,23 +146,23 @@ fun ChatScreen(
                 Spacer(Modifier.height(18.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { activeSkill = "Video Generation" }, modifier = Modifier.weight(1f)) {
+                        OutlinedButton(onClick = { activeSkill = "Video Generation"; activeSkillRequest = null }, modifier = Modifier.weight(1f)) {
                             Text("Create a video")
                         }
-                        OutlinedButton(onClick = { activeSkill = "Image Editing" }, modifier = Modifier.weight(1f)) {
+                        OutlinedButton(onClick = { activeSkill = "Image Editing"; activeSkillRequest = null }, modifier = Modifier.weight(1f)) {
                             Text("Edit an image")
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { activeSkill = "Document AI" }, modifier = Modifier.weight(1f)) {
+                        OutlinedButton(onClick = { activeSkill = "Document AI"; activeSkillRequest = null }, modifier = Modifier.weight(1f)) {
                             Text("Read a document")
                         }
-                        OutlinedButton(onClick = { activeSkill = "App Builder" }, modifier = Modifier.weight(1f)) {
+                        OutlinedButton(onClick = { activeSkill = "App Builder"; activeSkillRequest = null }, modifier = Modifier.weight(1f)) {
                             Text("Build an app")
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { activeSkill = "Voice Assistant" }, modifier = Modifier.weight(1f)) {
+                        OutlinedButton(onClick = { activeSkill = "Voice Assistant"; activeSkillRequest = null }, modifier = Modifier.weight(1f)) {
                             Text("Use my voice")
                         }
                         OutlinedButton(onClick = { draft = "I have a question. Please help me." }, modifier = Modifier.weight(1f)) {

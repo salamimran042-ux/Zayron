@@ -51,6 +51,7 @@ private val ToolPurple = Color(0xFF5146D8)
 @Composable
 fun ToolWorkspaceScreen(
     mode: String,
+    initialRequest: String? = null,
     modifier: Modifier = Modifier
 ) {
     // Keep each tool's draft and selected file isolated when the user switches modes.
@@ -66,6 +67,19 @@ fun ToolWorkspaceScreen(
         modifier = modifier.fillMaxSize().padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        if (!initialRequest.isNullOrBlank()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Your request", style = MaterialTheme.typography.labelLarge)
+                    Text(initialRequest, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+
         when (mode) {
             "Video Generation" -> {
                 ToolHeading(
