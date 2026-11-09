@@ -60,6 +60,14 @@ The API exposes account-scoped profile, conversation, message, job, entitlement 
 
 The job API includes a worker control plane: workers authenticate with a separate server-side token, claim jobs using PostgreSQL `FOR UPDATE SKIP LOCKED`, renew leases, and report success or failure. Failures can be rescheduled within the attempt limit. Worker endpoints never accept a user ID from the client. The worker execution process and actual tool handlers are still separate work; no AI provider or file storage is connected. Usage events and entitlement grants are server-owned and cannot be written through client routes.
 
+## Authenticated chat boundary
+
+- `POST /api/v1/chat/stream` accepts the Android chat request shape (`requestId`, optional `conversationId`, and ordered user/assistant messages) and requires a verified Supabase bearer token.
+- The endpoint validates that the final message is from the user and bounds message count and content size.
+- Until a model provider is deliberately configured, it returns HTTP 503 with the machine-readable code `SERVICE_UNAVAILABLE`. It does not fabricate an answer, persist messages, or forward chat content to an unconfigured third party.
+
+This route is a safe API contract foundation, not a live AI integration. A server-side provider adapter and an approved provider/configuration are still required before streamed assistant responses can be generated.
+
 ## Authentication foundation
 
 - `POST /api/v1/auth/register` creates an account through Supabase Auth; email confirmation remains provider-controlled.
