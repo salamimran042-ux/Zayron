@@ -143,21 +143,10 @@ jobs:
             adb shell 'i=0; until [ "$(getprop sys.boot_completed)" = "1" ] && cmd package list packages >/dev/null 2>&1; do i=$((i+1)); [ "$i" -lt 36 ] || exit 1; sleep 5; done'
             adb shell cmd package list packages >/dev/null
             # Best-effort verifier tuning on this disposable CI emulator only.
-            # A transient Android settings-service restart must not prevent the real tests from running.
-            for setting in "verifier_verify_adb_installs 0" "package_verifier_enable 0" "verifier_timeout 0"; do
-              key="${setting% *}"
-              value="${setting##* }"
-              attempt=1
-              until adb shell settings put global "$key" "$value"; do
-                if [ "$attempt" -ge 5 ]; then
-                  echo "::warning::Could not set emulator setting $key after $attempt attempts; continuing to instrumentation tests."
-                  break
-                fi
-                attempt=$((attempt + 1))
-                adb wait-for-device
-                sleep 3
-              done
-            done
+            # Keep each command independent so emulator setup cannot prevent instrumentation from starting.
+            adb shell settings put global verifier_verify_adb_installs 0 || echo "::warning::Could not disable ADB install verification; continuing."
+            adb shell settings put global package_verifier_enable 0 || echo "::warning::Could not disable package verification; continuing."
+            adb shell settings put global verifier_timeout 0 || echo "::warning::Could not adjust verifier timeout; continuing."
             gradle --no-daemon :app:connectedDebugAndroidTest -x :app:assembleDebug -x :app:assembleDebugAndroidTest
 
   backend-security-audit:
