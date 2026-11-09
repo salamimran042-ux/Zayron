@@ -10,6 +10,8 @@ COPY app ./app
 
 RUN pip install --no-cache-dir .
 
-EXPOSE 8080
+# Render and other managed hosts may provide PORT at runtime.
+# Keep 10000 as the local/container default.
+EXPOSE 10000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port \"\u0024{PORT:-10000}\""]
