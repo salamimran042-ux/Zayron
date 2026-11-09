@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir .
 # Keep 10000 as the local/container default.
 EXPOSE 10000
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port \"\u0024{PORT:-10000}\""]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-10000}\""]
