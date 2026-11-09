@@ -140,14 +140,24 @@ jobs:
           emulator-boot-timeout: 900
           script: |
             adb wait-for-device
-            adb shell 'i=0; until cmd package list packages >/dev/null 2>&1; do i=$((i+1)); [ "$i" -lt 24 ] || exit 1; sleep 5; done'
+            adb shell 'i=0; until [ "$(getprop sys.boot_completed)" = "1" ] && cmd package list packages >/dev/null 2>&1; do i=$((i+1)); [ "$i" -lt 36 ] || exit 1; sleep 5; done'
             adb shell cmd package list packages >/dev/null
-            # Disposable CI emulator only; no user or production data is present.
-            adb shell settings put global verifier_verify_adb_installs 0
-            adb shell settings put global package_verifier_enable 0
-            adb shell settings put global verifier_timeout 0
-            adb shell settings get global verifier_verify_adb_installs
-            adb shell settings get global package_verifier_enable
+            # Best-effort verifier tuning on this disposable CI emulator only.
+            # A transient Android settings-service restart must not prevent the real tests from running.
+            for setting in "verifier_verify_adb_installs 0" "package_verifier_enable 0" "verifier_timeout 0"; do
+              key="${setting% *}"
+              value="${setting##* }"
+              attempt=1
+              until adb shell settings put global "$key" "$value"; do
+                if [ "$attempt" -ge 5 ]; then
+                  echo "::warning::Could not set emulator setting $key after $attempt attempts; continuing to instrumentation tests."
+                  break
+                fi
+                attempt=$((attempt + 1))
+                adb wait-for-device
+                sleep 3
+              done
+            done
             gradle --no-daemon :app:connectedDebugAndroidTest -x :app:assembleDebug -x :app:assembleDebugAndroidTest
 
   backend-security-audit:
@@ -168,13 +178,27 @@ jobs:
           cache: pip
           cache-dependency-path: backend/pyproject.toml
 
-      - name: Install backend and audit tooling
+      - name: Prepare declared backend dependencies for audit
         run: |
-          python -m pip install -e ".[dev]"
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
+          dependencies = list(project.get("dependencies", []))
+          dependencies.extend(project.get("optional-dependencies", {}).get("dev", []))
+          if not dependencies:
+              raise SystemExit("No backend dependencies were found to audit.")
+          requirements = Path(os.environ["RUNNER_TEMP"]) / "zayron-audit-requirements.txt"
+          requirements.write_text("\\n".join(dependencies) + "\\n")
+          print(f"Auditing {len(dependencies)} declared runtime and dev dependencies:")
+          print(requirements.read_text())
+          PY
           python -m pip install pip-audit
 
-      - name: Audit installed backend dependencies
-        run: python -m pip_audit --skip-editable --strict
+      - name: Audit declared backend dependencies
+        run: python -m pip_audit --strict -r "$RUNNER_TEMP/zayron-audit-requirements.txt"
 
   database-migration-integrity:
     name: Database migration and RLS safety checks
