@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   verify-project-integrity:
@@ -174,7 +174,7 @@ jobs:
           python -m pip install pip-audit
 
       - name: Audit installed backend dependencies
-        run: python -m pip_audit --strict
+        run: python -m pip_audit --skip-editable --strict
 
   database-migration-integrity:
     name: Database migration and RLS safety checks
