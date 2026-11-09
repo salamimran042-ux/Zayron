@@ -191,7 +191,7 @@ jobs:
           if not dependencies:
               raise SystemExit("No backend dependencies were found to audit.")
           requirements = Path(os.environ["RUNNER_TEMP"]) / "zayron-audit-requirements.txt"
-          requirements.write_text("\\n".join(dependencies) + "\\n")
+          requirements.write_text("\n".join(dependencies) + "\n")
           print(f"Auditing {len(dependencies)} declared runtime and dev dependencies:")
           print(requirements.read_text())
           PY
