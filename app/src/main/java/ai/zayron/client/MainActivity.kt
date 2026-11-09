@@ -50,7 +50,6 @@ import ai.zayron.client.data.auth.AuthSession
 import ai.zayron.client.data.auth.BackendAuthRepository
 import ai.zayron.client.data.auth.SignInCredentials
 import ai.zayron.client.ui.chat.ChatScreen
-import ai.zayron.client.ui.dashboard.DashboardScreen
 import ai.zayron.client.ui.settings.SettingsScreen
 import ai.zayron.client.ui.tools.ToolWorkspaceScreen
 import kotlinx.coroutines.launch
@@ -237,30 +236,19 @@ private fun AuthFailureCode.toUserMessage(): String = when (this) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
-    var mode by rememberSaveable { mutableStateOf("Home") }
+    var mode by rememberSaveable { mutableStateOf("AI Chat") }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    BackHandler(enabled = mode != "Home") {
-        mode = "Home"
+    BackHandler(enabled = mode != "AI Chat") {
+        mode = "AI Chat"
     }
 
     val sections = listOf(
-        "YOUR WORKSPACE" to listOf(
-            "Home" to "Home",
-            "Conversational AI" to "AI Chat"
+        "YOUR ASSISTANT" to listOf(
+            "Zayron AI" to "AI Chat"
         ),
-        "CREATE & EDIT" to listOf(
-            "Image-to-Video" to "Video Generation",
-            "AI Inpaint & Eraser" to "Image Editing",
-            "AI App Builder" to "App Builder"
-        ),
-        "READ & LISTEN" to listOf(
-            "Document AI" to "Document AI",
-            "Voice Assistant" to "Voice Assistant"
-        )
-        ,
-        "ACCOUNT & SETTINGS" to listOf(
+        "ACCOUNT" to listOf(
             "Settings" to "Settings"
         )
     )
@@ -367,10 +355,6 @@ private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (mode) {
-                    "Home" -> DashboardScreen(
-                        onToolSelected = { selectedTool -> mode = selectedTool },
-                        modifier = Modifier.fillMaxSize()
-                    )
                     "AI Chat" -> ChatScreen(Modifier.fillMaxSize())
                     "Settings" -> SettingsScreen(
                         darkTheme = darkTheme,

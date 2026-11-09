@@ -76,9 +76,9 @@ fun ChatScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("AI Chat", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Zayron AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "Private workspace preview",
+                    "One assistant. Many capabilities.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -115,10 +115,37 @@ fun ChatScreen(
                 Text("What can I help you with?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Ask a question, explore an idea or start creating.",
+                    "Chat naturally. Zayron brings its creative and productivity skills into this same conversation.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(Modifier.height(18.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { draft = "I want to turn an image into a cinematic video. Help me create it." }, modifier = Modifier.weight(1f)) {
+                            Text("Create a video")
+                        }
+                        OutlinedButton(onClick = { draft = "Help me edit an image and remove an unwanted object." }, modifier = Modifier.weight(1f)) {
+                            Text("Edit an image")
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { draft = "Please read this document and explain its important points." }, modifier = Modifier.weight(1f)) {
+                            Text("Read a document")
+                        }
+                        OutlinedButton(onClick = { draft = "Help me plan and build an Android app from my idea." }, modifier = Modifier.weight(1f)) {
+                            Text("Build an app")
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { draft = "I want to talk with you using my voice." }, modifier = Modifier.weight(1f)) {
+                            Text("Use my voice")
+                        }
+                        OutlinedButton(onClick = { draft = "I have a question. Please help me." }, modifier = Modifier.weight(1f)) {
+                            Text("Ask anything")
+                        }
+                    }
+                }
             }
         } else {
             LazyColumn(
