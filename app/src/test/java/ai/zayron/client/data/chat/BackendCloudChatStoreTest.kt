@@ -55,11 +55,11 @@ class BackendCloudChatStoreTest {
             assertEquals("Bearer user-session-token", request.header("Authorization"))
         }
         assertEquals(conversationId, ids.read())
+        val messageBody = okio.Buffer()
+        requests[1].body!!.writeTo(messageBody)
         assertEquals(
             "Hello Zayron",
-            org.json.JSONObject(requests[1].body!!.let { body ->
-                okio.Buffer().also(body::writeTo).readUtf8()
-            }).getString("content")
+            org.json.JSONObject(messageBody.readUtf8()).getString("content")
         )
     }
 
