@@ -24,6 +24,11 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.VideoLibrary
+import ai.zayron.client.ui.dashboard.DashboardScreen
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.*
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
