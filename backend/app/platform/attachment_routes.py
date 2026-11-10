@@ -84,7 +84,7 @@ async def upload_attachment(
         raise HTTPException(502, detail={"code": "CLOUD_DATA_BAD_RESPONSE"})
     return Response(
         content=upstream.content,
-        status_code=upstream.status_code,
+        status_code=(201 if upstream.status_code in (200, 201) else upstream.status_code),
         media_type="application/json",
         headers={"Cache-Control": "no-store"},
     )
