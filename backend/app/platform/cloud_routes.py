@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -18,9 +18,21 @@ class ConversationCreate(BaseModel):
     title: str = Field(default="New conversation", max_length=160)
 
 
+class AttachmentReferenceInput(BaseModel):
+    id: str = Field(min_length=36, max_length=36)
+    display_name: str = Field(min_length=1, max_length=160)
+    mime_type: Literal[
+        "application/pdf", "text/plain", "text/markdown", "text/csv",
+        "application/json", "image/png", "image/jpeg", "image/webp",
+    ]
+    size_bytes: int = Field(ge=1, le=10 * 1024 * 1024)
+    storage_path: str = Field(min_length=1, max_length=160)
+
+
 class MessageCreate(BaseModel):
     conversation_id: str = Field(min_length=36, max_length=36)
-    content: str = Field(min_length=1, max_length=100_000)
+    content: str = Field(default="", max_length=100_000)
+    attachments: list[AttachmentReferenceInput] = Field(default_factory=list, max_length=5)
 
 
 def _upstream_config(request: Request) -> tuple[str, str, str]:
@@ -49,7 +61,7 @@ async def _forward(
     params: dict[str, str] | None = None,
     body: dict[str, Any] | None = None,
 ) -> Response:
-    del user  # Authentication dependency validates the JWT; forward it for Supabase RLS.
+    del user
     base_url, publishable_key, authorization = _upstream_config(request)
     url = f"{base_url}/functions/v1/{function_name}"
     headers = {
@@ -60,17 +72,11 @@ async def _forward(
     try:
         async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as client:
             upstream = await client.request(
-                method,
-                url,
-                params=params,
-                json=body,
-                headers=headers,
+                method, url, params=params, json=body, headers=headers
             )
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "CLOUD_DATA_UNAVAILABLE"}) from exc
 
-    # Supabase functions return deliberately small JSON payloads. Do not expose
-    # upstream response headers, cookies, or credential-bearing diagnostics.
     media_type = upstream.headers.get("content-type", "application/json").split(";")[0]
     if media_type != "application/json":
         raise HTTPException(502, detail={"code": "CLOUD_DATA_BAD_RESPONSE"})
@@ -89,10 +95,7 @@ async def list_cloud_conversations(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> Response:
     return await _forward(
-        request,
-        user,
-        "conversations",
-        method="GET",
+        request, user, "conversations", method="GET",
         params={"include_archived": str(include_archived).lower()},
     )
 
@@ -104,10 +107,7 @@ async def create_cloud_conversation(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> Response:
     return await _forward(
-        request,
-        user,
-        "conversations",
-        method="POST",
+        request, user, "conversations", method="POST",
         body={"title": body.title.strip() or "New conversation"},
     )
 
@@ -119,10 +119,7 @@ async def list_cloud_messages(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> Response:
     return await _forward(
-        request,
-        user,
-        "messages",
-        method="GET",
+        request, user, "messages", method="GET",
         params={"conversation_id": conversation_id},
     )
 
@@ -133,6 +130,8 @@ async def create_cloud_message(
     request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> Response:
+    if not body.content.strip() and not body.attachments:
+        raise HTTPException(422, detail={"code": "MESSAGE_CONTENT_OR_ATTACHMENT_REQUIRED"})
     return await _forward(
         request,
         user,
@@ -141,5 +140,6 @@ async def create_cloud_message(
         body={
             "conversation_id": body.conversation_id,
             "content": body.content,
+            "attachments": [item.model_dump() for item in body.attachments],
         },
     )

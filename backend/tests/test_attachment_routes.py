@@ -85,6 +85,9 @@ def test_attachment_upload_forwards_user_jwt_and_owner_scoped_random_path(monkey
 
     assert response.status_code == 201
     assert response.headers["cache-control"] == "no-store"
+    uploaded_path = response.json()["path"]
+    assert uploaded_path.startswith(f"{OWNER}/")
+    assert response.json()["bucket"] == "zayron-attachments"
     url, kwargs = FakeAsyncClient.request_data
     assert url.startswith(
         "https://zayron-example.supabase.co/storage/v1/object/zayron-attachments/"

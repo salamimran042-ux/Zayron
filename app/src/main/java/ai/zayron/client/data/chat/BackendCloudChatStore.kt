@@ -3,22 +3,25 @@ package ai.zayron.client.data.chat
 import android.content.Context
 import ai.zayron.client.data.network.ApiClient
 import ai.zayron.client.data.network.NetworkResult
+import ai.zayron.client.ui.chat.ChatAttachmentReference
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.HttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-/** Persists the current user's chat messages through the authenticated Zayron API. */
 interface CloudChatStore {
-    suspend fun saveUserMessage(content: String): NetworkResult<Unit>
+    suspend fun saveUserMessage(
+        content: String,
+        attachments: List<ChatAttachmentReference> = emptyList()
+    ): NetworkResult<Unit>
     fun startNewConversation()
 }
 
-/** Small non-secret pointer to the cloud conversation owned by the signed-in account. */
 interface CloudConversationIdStore {
     fun read(): String?
     fun write(id: String)
@@ -30,28 +33,19 @@ class SharedPreferencesCloudConversationIdStore(context: Context) : CloudConvers
         "zayron_cloud_chat",
         Context.MODE_PRIVATE
     )
-
     override fun read(): String? = preferences.getString(KEY_CONVERSATION_ID, null)
-
     override fun write(id: String) {
         preferences.edit().putString(KEY_CONVERSATION_ID, id).apply()
     }
-
     override fun clear() {
         preferences.edit().remove(KEY_CONVERSATION_ID).apply()
     }
-
     private companion object {
         const val KEY_CONVERSATION_ID = "conversation_id"
     }
 }
 
-/**
- * Creates a cloud conversation on first use, then stores each user message.
- * Authentication is supplied by the encrypted Android Keystore session store.
- * The API forwards the verified user JWT to Supabase so row-level security remains
- * the authority for conversation ownership; no database password is needed here.
- */
+/** Saves chat text and private storage references through the authenticated Zayron API. */
 class BackendCloudChatStore(
     private val accessTokenProvider: ChatAccessTokenProvider?,
     private val conversationIds: CloudConversationIdStore,
@@ -60,8 +54,12 @@ class BackendCloudChatStore(
 ) : CloudChatStore {
     private val mutex = Mutex()
 
-    override suspend fun saveUserMessage(content: String): NetworkResult<Unit> = mutex.withLock {
-        if (content.isBlank() || content.length > MAX_MESSAGE_LENGTH) {
+    override suspend fun saveUserMessage(
+        content: String,
+        attachments: List<ChatAttachmentReference>
+    ): NetworkResult<Unit> = mutex.withLock {
+        if ((content.isBlank() && attachments.isEmpty()) ||
+            content.length > MAX_MESSAGE_LENGTH || attachments.size > MAX_ATTACHMENTS) {
             return@withLock NetworkResult.RejectedRequest
         }
         val token = accessTokenProvider?.getAccessToken()?.takeIf { it.isNotBlank() }
@@ -75,15 +73,13 @@ class BackendCloudChatStore(
             }
         }
 
-        var result = postMessage(token, conversationId!!, content)
+        var result = postMessage(token, conversationId!!, content, attachments)
         if (result is NetworkResult.HttpError && result.statusCode == 404) {
-            // The saved ID may belong to a previous account. RLS prevents access;
-            // start a fresh conversation for the current authenticated account.
             conversationIds.clear()
             when (val created = createConversation(token)) {
                 is NetworkResult.Success -> {
                     conversationId = created.data
-                    result = postMessage(token, conversationId!!, content)
+                    result = postMessage(token, conversationId!!, content, attachments)
                 }
                 else -> return@withLock created.asUnitResult()
             }
@@ -103,9 +99,7 @@ class BackendCloudChatStore(
         )
         if (result !is NetworkResult.Success) return result
         return try {
-            val id = JSONObject(result.data)
-                .getJSONObject("conversation")
-                .getString("id")
+            val id = JSONObject(result.data).getJSONObject("conversation").getString("id")
             UUID.fromString(id)
             conversationIds.write(id)
             NetworkResult.Success(id, result.statusCode)
@@ -117,20 +111,31 @@ class BackendCloudChatStore(
     private suspend fun postMessage(
         token: String,
         conversationId: String,
-        content: String
-    ): NetworkResult<String> = execute(
-        path = "api/v1/cloud/messages",
-        token = token,
-        body = JSONObject()
-            .put("conversation_id", conversationId)
-            .put("content", content)
-    )
-
-    private suspend fun execute(
-        path: String,
-        token: String,
-        body: JSONObject
+        content: String,
+        attachments: List<ChatAttachmentReference>
     ): NetworkResult<String> {
+        val attachmentJson = JSONArray()
+        attachments.forEach { item ->
+            attachmentJson.put(
+                JSONObject()
+                    .put("id", item.id)
+                    .put("display_name", item.displayName)
+                    .put("mime_type", item.mimeType)
+                    .put("size_bytes", item.sizeBytes)
+                    .put("storage_path", item.storagePath)
+            )
+        }
+        return execute(
+            path = "api/v1/cloud/messages",
+            token = token,
+            body = JSONObject()
+                .put("conversation_id", conversationId)
+                .put("content", content)
+                .put("attachments", attachmentJson)
+        )
+    }
+
+    private suspend fun execute(path: String, token: String, body: JSONObject): NetworkResult<String> {
         val url = endpointProvider(path) ?: return NetworkResult.NotConfigured
         val request = Request.Builder()
             .url(url)
@@ -154,5 +159,6 @@ class BackendCloudChatStore(
     private companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         const val MAX_MESSAGE_LENGTH = 100_000
+        const val MAX_ATTACHMENTS = 5
     }
 }

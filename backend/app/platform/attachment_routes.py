@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse
 
 from app.auth.dependencies import get_current_user
 from app.auth.token_verifier import AuthenticatedUser
@@ -32,8 +32,7 @@ async def upload_attachment(
     request: Request,
     file: UploadFile = File(...),
     user: AuthenticatedUser = Depends(get_current_user),
-) -> Response:
-    """Upload a private attachment through Supabase Storage using the user's JWT."""
+) -> JSONResponse:
     try:
         owner_id = str(UUID(user.subject))
     except (ValueError, TypeError, AttributeError) as exc:
@@ -60,8 +59,6 @@ async def upload_attachment(
     if not publishable_key or not authorization.lower().startswith("bearer "):
         raise HTTPException(401, detail={"code": "AUTH_REQUIRED"})
 
-    # Never use the client filename as a storage path. The first path segment
-    # is the verified JWT subject and is enforced again by Storage RLS.
     object_path = f"{owner_id}/{uuid4().hex}.{extension}"
     url = (
         f"{supabase_url.rstrip('/')}/storage/v1/object/"
@@ -79,12 +76,17 @@ async def upload_attachment(
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "CLOUD_DATA_UNAVAILABLE"}) from exc
 
-    response_type = upstream.headers.get("content-type", "").split(";", 1)[0]
-    if response_type != "application/json":
-        raise HTTPException(502, detail={"code": "CLOUD_DATA_BAD_RESPONSE"})
-    return Response(
-        content=upstream.content,
-        status_code=(201 if upstream.status_code in (200, 201) else upstream.status_code),
-        media_type="application/json",
+    if upstream.status_code not in (200, 201):
+        response_type = upstream.headers.get("content-type", "").split(";", 1)[0]
+        if response_type != "application/json":
+            raise HTTPException(502, detail={"code": "CLOUD_DATA_BAD_RESPONSE"})
+        return JSONResponse(
+            content={"code": "ATTACHMENT_UPLOAD_FAILED"},
+            status_code=upstream.status_code,
+            headers={"Cache-Control": "no-store"},
+        )
+    return JSONResponse(
+        content={"path": object_path, "bucket": BUCKET},
+        status_code=201,
         headers={"Cache-Control": "no-store"},
     )

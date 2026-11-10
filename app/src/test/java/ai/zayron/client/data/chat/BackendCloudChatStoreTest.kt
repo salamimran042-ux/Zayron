@@ -112,4 +112,46 @@ class BackendCloudChatStoreTest {
         assertEquals(3, requests.size)
         assertEquals(secondId, ids.read())
     }
+
+
+    @Test
+    fun sendsPrivateAttachmentReferencesWithTheCloudMessage() = runBlocking {
+        val conversationId = "00000000-0000-0000-0000-000000000123"
+        val requests = mutableListOf<Request>()
+        val store = BackendCloudChatStore(
+            accessTokenProvider = ChatAccessTokenProvider { "user-session-token" },
+            conversationIds = MemoryConversationIds(),
+            endpointProvider = { path ->
+                HttpUrl.Builder().scheme("https").host("api.zayron.test")
+                    .addPathSegments(path).build()
+            },
+            requestExecutor = { request ->
+                requests += request
+                if (requests.size == 1) {
+                    NetworkResult.Success(
+                        """{"conversation":{"id":"$conversationId"}}""", 201
+                    )
+                } else {
+                    NetworkResult.Success("""{"message":{"id":"message-2"}}""", 201)
+                }
+            }
+        )
+        val attachment = ai.zayron.client.ui.chat.ChatAttachmentReference(
+            id = "00000000-0000-0000-0000-000000000010",
+            displayName = "notes.pdf",
+            mimeType = "application/pdf",
+            sizeBytes = 2048,
+            storagePath = "00000000-0000-0000-0000-000000000001/0123456789abcdef0123456789abcdef.pdf"
+        )
+
+        assertTrue(store.saveUserMessage("Read this", listOf(attachment)) is NetworkResult.Success)
+        val body = okio.Buffer()
+        requests.last().body!!.writeTo(body)
+        val json = org.json.JSONObject(body.readUtf8())
+        assertEquals(
+            attachment.storagePath,
+            json.getJSONArray("attachments").getJSONObject(0).getString("storage_path")
+        )
+    }
+
 }

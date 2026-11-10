@@ -186,7 +186,7 @@ class ChatViewModel(
             val assistantId = UUID.randomUUID().toString()
             try {
             val cloudSaveResult = try {
-                cloudChatStore.saveUserMessage(cleanText)
+                cloudChatStore.saveUserMessage(cleanText, attachments)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
