@@ -8,6 +8,9 @@ import androidx.lifecycle.viewModelScope
 import ai.zayron.client.data.auth.AndroidKeystoreSessionStore
 import ai.zayron.client.data.auth.SecureChatAccessTokenProvider
 import ai.zayron.client.data.chat.ChatRemoteDataSource
+import ai.zayron.client.data.chat.CloudChatStore
+import ai.zayron.client.data.chat.BackendCloudChatStore
+import ai.zayron.client.data.chat.SharedPreferencesCloudConversationIdStore
 import ai.zayron.client.data.chat.ChatStreamEvent
 import ai.zayron.client.data.chat.ChatStreamRequest
 import ai.zayron.client.data.chat.chatMessagesForRemoteRequest
@@ -34,6 +37,12 @@ class ChatViewModel(
         accessTokenProvider = SecureChatAccessTokenProvider(
             AndroidKeystoreSessionStore(application)
         )
+    ),
+    private val cloudChatStore: CloudChatStore = BackendCloudChatStore(
+        accessTokenProvider = SecureChatAccessTokenProvider(
+            AndroidKeystoreSessionStore(application)
+        ),
+        conversationIds = SharedPreferencesCloudConversationIdStore(application)
     )
 ) : AndroidViewModel(application) {
 
@@ -83,6 +92,14 @@ class ChatViewModel(
         sendJob = viewModelScope.launch {
             val assistantId = UUID.randomUUID().toString()
             try {
+            val cloudSaveResult = try {
+                cloudChatStore.saveUserMessage(cleanText)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                NetworkResult.ConnectionError
+            }
+
             val events = Channel<ChatStreamEvent>(Channel.UNLIMITED)
             val eventCollector = launch {
                 for (event in events) {
@@ -128,8 +145,9 @@ class ChatViewModel(
             val assistantIndex = messages.indexOfFirst { it.id == assistantId }
             val localOnly = result == NetworkResult.NotConfigured ||
                 result == NetworkResult.AuthenticationRequired
+            val cloudSaved = cloudSaveResult is NetworkResult.Success
             val finalState = when {
-                result is NetworkResult.Success -> DeliveryState.SENT
+                result is NetworkResult.Success || cloudSaved -> DeliveryState.SENT
                 localOnly -> DeliveryState.LOCAL_ONLY
                 else -> DeliveryState.FAILED
             }
@@ -147,7 +165,14 @@ class ChatViewModel(
                 )
             }
 
-            _serviceMessage.value = ApiErrorMapper.userMessage(result)
+            _serviceMessage.value = when {
+                result is NetworkResult.Success && !cloudSaved ->
+                    "Your AI response completed, but cloud chat history could not be saved."
+                result is NetworkResult.Success -> null
+                cloudSaved ->
+                    "Your message is saved in cloud history, but the AI response service is not connected yet."
+                else -> ApiErrorMapper.userMessage(result)
+            }
             persistMessages()
             } finally {
                 // Cancellation must never leave the composer permanently locked or
@@ -194,6 +219,7 @@ class ChatViewModel(
         _serviceMessage.value = null
         _isSending.value = false
         chatRepository.clearMessages()
+        cloudChatStore.startNewConversation()
     }
 
     private fun persistMessages() {
