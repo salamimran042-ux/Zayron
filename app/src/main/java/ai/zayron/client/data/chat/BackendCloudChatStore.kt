@@ -143,12 +143,12 @@ class BackendCloudChatStore(
 
     private fun NetworkResult<String>.asUnitResult(): NetworkResult<Unit> = when (this) {
         is NetworkResult.Success -> NetworkResult.Success(Unit, statusCode)
-        is NetworkResult.HttpError -> this
-        is NetworkResult.StreamError -> this
-        NetworkResult.AuthenticationRequired -> this
-        NetworkResult.NotConfigured -> this
-        NetworkResult.RejectedRequest -> this
-        NetworkResult.ConnectionError -> this
+        is NetworkResult.HttpError -> NetworkResult.HttpError(statusCode, responseBody)
+        is NetworkResult.StreamError -> NetworkResult.StreamError(code)
+        NetworkResult.AuthenticationRequired -> NetworkResult.AuthenticationRequired
+        NetworkResult.NotConfigured -> NetworkResult.NotConfigured
+        NetworkResult.RejectedRequest -> NetworkResult.RejectedRequest
+        NetworkResult.ConnectionError -> NetworkResult.ConnectionError
     }
 
     private companion object {
