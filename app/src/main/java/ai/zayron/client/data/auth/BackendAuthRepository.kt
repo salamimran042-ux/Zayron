@@ -94,7 +94,7 @@ class BackendAuthRepository(
             } catch (_: Exception) {
                 SignUpResult.Failed(AuthFailureCode.UNKNOWN)
             } finally {
-                password.fill('\\u0000')
+                password.fill('\u0000')
             }
         }
 
