@@ -147,15 +147,7 @@ jobs:
             adb shell settings put global verifier_verify_adb_installs 0 || echo "::warning::Could not disable ADB install verification; continuing."
             adb shell settings put global package_verifier_enable 0 || echo "::warning::Could not disable package verification; continuing."
             adb shell settings put global verifier_timeout 0 || echo "::warning::Could not adjust verifier timeout; continuing."
-            if gradle --no-daemon :app:connectedDebugAndroidTest -x :app:assembleDebug -x :app:assembleDebugAndroidTest; then
-              test_status=0
-            else
-              test_status=$?
-            fi
-            mkdir -p "$RUNNER_TEMP/zayron-instrumentation-diagnostics"
-            adb logcat -d -v threadtime > "$RUNNER_TEMP/zayron-instrumentation-diagnostics/logcat.txt" || true
-            find app/build/outputs -type f \\( -path '*androidTest-results*' -o -path '*connected*' \\) -print -exec cp --parents '{}' "$RUNNER_TEMP/zayron-instrumentation-diagnostics/" \\; 2>/dev/null || true
-            exit "$test_status"
+            gradle --no-daemon :app:connectedDebugAndroidTest -x :app:assembleDebug -x :app:assembleDebugAndroidTest; test_status=$?; mkdir -p "$RUNNER_TEMP/zayron-instrumentation-diagnostics"; adb logcat -d -v threadtime > "$RUNNER_TEMP/zayron-instrumentation-diagnostics/logcat.txt" || true; find app/build/outputs -type f \\( -path '*androidTest-results*' -o -path '*connected*' \\) -print -exec cp --parents '{}' "$RUNNER_TEMP/zayron-instrumentation-diagnostics/" \\; 2>/dev/null || true; exit "$test_status"
       - name: Preserve Android instrumentation diagnostics
         if: always()
         uses: actions/upload-artifact@v4
