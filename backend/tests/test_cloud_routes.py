@@ -143,3 +143,28 @@ def test_cloud_message_rejects_empty_content_without_attachments():
     finally:
         app.dependency_overrides.pop(get_current_user, None)
     assert response.status_code == 422
+
+
+def test_cloud_message_rejects_attachment_from_another_owner():
+    app.dependency_overrides[get_current_user] = authenticated_user
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/cloud/messages",
+                headers={"Authorization": "Bearer user-access-token"},
+                json={
+                    "conversation_id": "00000000-0000-0000-0000-000000000123",
+                    "content": "Please read this",
+                    "attachments": [{
+                        "id": "00000000-0000-0000-0000-000000000010",
+                        "display_name": "notes.pdf",
+                        "mime_type": "application/pdf",
+                        "size_bytes": 2048,
+                        "storage_path": "00000000-0000-0000-0000-000000000099/0123456789abcdef0123456789abcdef.pdf",
+                    }],
+                },
+            )
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "INVALID_ATTACHMENT_REFERENCE"

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import Any, Literal
+import re
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -33,6 +35,29 @@ class MessageCreate(BaseModel):
     conversation_id: str = Field(min_length=36, max_length=36)
     content: str = Field(default="", max_length=100_000)
     attachments: list[AttachmentReferenceInput] = Field(default_factory=list, max_length=5)
+
+
+
+def _attachments_belong_to_user(attachments: list[AttachmentReferenceInput], user: AuthenticatedUser) -> bool:
+    try:
+        owner_id = str(UUID(user.subject)).lower()
+    except (ValueError, TypeError, AttributeError):
+        return False
+    extensions = {
+        "application/pdf": "pdf", "text/plain": "txt", "text/markdown": "md",
+        "text/csv": "csv", "application/json": "json", "image/png": "png",
+        "image/jpeg": "jpg", "image/webp": "webp",
+    }
+    for attachment in attachments:
+        expected_extension = extensions[attachment.mime_type]
+        pattern = rf"{re.escape(owner_id)}/[0-9a-f]{{32}}\\.{expected_extension}"
+        if not re.fullmatch(pattern, attachment.storage_path, flags=re.IGNORECASE):
+            return False
+        try:
+            UUID(attachment.id)
+        except (ValueError, TypeError, AttributeError):
+            return False
+    return True
 
 
 def _upstream_config(request: Request) -> tuple[str, str, str]:
@@ -132,6 +157,8 @@ async def create_cloud_message(
 ) -> Response:
     if not body.content.strip() and not body.attachments:
         raise HTTPException(422, detail={"code": "MESSAGE_CONTENT_OR_ATTACHMENT_REQUIRED"})
+    if body.attachments and not _attachments_belong_to_user(body.attachments, user):
+        raise HTTPException(422, detail={"code": "INVALID_ATTACHMENT_REFERENCE"})
     return await _forward(
         request,
         user,
