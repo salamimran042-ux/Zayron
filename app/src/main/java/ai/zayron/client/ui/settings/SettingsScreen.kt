@@ -1,5 +1,6 @@
 package ai.zayron.client.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,6 +42,7 @@ fun SettingsScreen(
     accountEmail: String,
     onToggleTheme: () -> Unit,
     onSignOut: () -> Unit,
+    onOpenCredits: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var confirmSignOut by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -82,7 +84,9 @@ fun SettingsScreen(
             SettingsRow(
                 icon = { Icon(Icons.Default.CreditCard, contentDescription = null) },
                 title = "Plan, credits and usage",
-                subtitle = "Plan details, usage history and credit balances will appear after the account services are connected."
+                subtitle = "Open your wallet, credit balance and usage details.",
+                trailing = { TextButton(onClick = onOpenCredits) { Text("View") } },
+                onClick = onOpenCredits
             )
         }
 
@@ -163,10 +167,13 @@ private fun SettingsRow(
     icon: @Composable () -> Unit,
     title: String,
     subtitle: String,
-    trailing: (@Composable () -> Unit)? = null
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
