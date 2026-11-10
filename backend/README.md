@@ -80,3 +80,12 @@ This route is a safe API contract foundation, not a live AI integration. A serve
 Supabase Auth owns credential validation, refresh rotation and session revocation. The backend does not persist passwords or refresh tokens. Android must store token material only in its Android Keystore-backed encrypted store. Provider response bodies and credentials are not exposed in API errors. Supabase project-side rate limits must be reviewed before production.
 
 These routes are implemented in source and tested with mocked provider responses; they are not live until a real Supabase project is configured and the backend is deployed. The current key names are supported while legacy anon/service-role environment names remain temporarily compatible.
+
+
+## Private attachment retrieval and document extraction
+
+- `POST /api/v1/cloud/attachments/extract` accepts an attachment storage path, declared MIME type and byte count. It requires the user's verified Supabase JWT.
+- The backend validates that the path is a server-generated UUID filename inside that same user's folder, then downloads the object from the private bucket using the user's JWT and publishable key. It does not create a public URL or use a service-role key.
+- PDF text extraction is bounded to 100 pages and 100,000 characters. Plain text, Markdown, CSV and JSON are decoded as UTF-8. Declared size and MIME type are checked against the retrieved object.
+- Images are deliberately rejected with `VISION_PROCESSING_NOT_CONFIGURED` until a secure vision/model adapter exists. Scanned PDFs with no text layer are not OCR'd yet.
+- This endpoint prepares document text for a future model request; it does not generate an AI answer, perform RAG, or claim that Zayron understands the attachment.
