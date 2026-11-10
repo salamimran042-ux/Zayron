@@ -50,7 +50,7 @@ def _attachments_belong_to_user(attachments: list[AttachmentReferenceInput], use
     }
     for attachment in attachments:
         expected_extension = extensions[attachment.mime_type]
-        pattern = rf"{re.escape(owner_id)}/[0-9a-f]{{32}}\\.{expected_extension}"
+        pattern = rf"{re.escape(owner_id)}/[0-9a-f]{{32}}\.{expected_extension}"
         if not re.fullmatch(pattern, attachment.storage_path, flags=re.IGNORECASE):
             return False
         try:
