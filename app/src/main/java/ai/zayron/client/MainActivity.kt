@@ -49,6 +49,7 @@ import ai.zayron.client.data.auth.AuthResult
 import ai.zayron.client.data.auth.AuthSession
 import ai.zayron.client.data.auth.BackendAuthRepository
 import ai.zayron.client.data.auth.SignInCredentials
+import ai.zayron.client.data.chat.SharedPreferencesCloudConversationIdStore
 import ai.zayron.client.ui.chat.ChatScreen
 import ai.zayron.client.ui.settings.SettingsScreen
 import ai.zayron.client.ui.tools.ToolWorkspaceScreen
@@ -97,7 +98,10 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
     }
     var session by remember { mutableStateOf<AuthSession?>(null) }
     var restoringSession by remember { mutableStateOf(true) }
-    var preview by rememberSaveable { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val cloudConversationIds = remember(context) {
+        SharedPreferencesCloudConversationIdStore(context.applicationContext)
+    }
 
     LaunchedEffect(authRepository) {
         session = authRepository.restoreSession()
@@ -113,14 +117,27 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
                 CircularProgressIndicator()
             }
         }
-        session != null || preview -> Workspace(
+        session != null -> Workspace(
+            session = session!!,
             darkTheme = darkTheme,
-            onToggleTheme = onToggleTheme
+            onToggleTheme = onToggleTheme,
+            onSignOut = {
+                scope.launch {
+                    try {
+                        authRepository.signOut()
+                    } finally {
+                        cloudConversationIds.clear()
+                        session = null
+                    }
+                }
+            }
         )
         else -> SignIn(
             authRepository = authRepository,
-            onAuthenticated = { session = it },
-            onPreview = { preview = true }
+            onAuthenticated = {
+                cloudConversationIds.clear()
+                session = it
+            }
         )
     }
 }
@@ -128,8 +145,7 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
 @Composable
 private fun SignIn(
     authRepository: AuthRepository,
-    onAuthenticated: (AuthSession) -> Unit,
-    onPreview: () -> Unit
+    onAuthenticated: (AuthSession) -> Unit
 ) {
     var email by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -218,7 +234,6 @@ private fun SignIn(
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
-            TextButton(onClick = onPreview) { Text("Preview workspace") }
         }
     }
 }
@@ -235,7 +250,12 @@ private fun AuthFailureCode.toUserMessage(): String = when (this) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
+private fun Workspace(
+    session: AuthSession,
+    darkTheme: Boolean,
+    onToggleTheme: () -> Unit,
+    onSignOut: () -> Unit
+) {
     var mode by rememberSaveable { mutableStateOf("AI Chat") }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -358,7 +378,9 @@ private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
                     "AI Chat" -> ChatScreen(Modifier.fillMaxSize())
                     "Settings" -> SettingsScreen(
                         darkTheme = darkTheme,
+                        accountEmail = session.email,
                         onToggleTheme = onToggleTheme,
+                        onSignOut = onSignOut,
                         modifier = Modifier.fillMaxSize()
                     )
                     else -> ToolWorkspaceScreen(mode = mode, modifier = Modifier.fillMaxSize())
