@@ -119,8 +119,10 @@ class ChatViewModelCancellationTest {
     }
 
     private class NoCloudChatStore : CloudChatStore {
-        override suspend fun saveUserMessage(content: String): NetworkResult<Unit> =
-            NetworkResult.AuthenticationRequired
+        override suspend fun saveUserMessage(
+            content: String,
+            attachments: List<ChatAttachmentReference>
+        ): NetworkResult<Unit> = NetworkResult.AuthenticationRequired
 
         override fun startNewConversation() = Unit
     }
