@@ -115,7 +115,7 @@ class AttachmentExtractRequest(BaseModel):
 
 def _validate_owned_storage_path(storage_path: str, owner_id: str, mime_type: str) -> bool:
     extension = ALLOWED_TYPES[mime_type]
-    pattern = rf"{re.escape(owner_id)}/[0-9a-f]{{32}}\\.{extension}"
+    pattern = rf"{re.escape(owner_id)}/[0-9a-f]{{32}}\.{extension}"
     return re.fullmatch(pattern, storage_path, flags=re.IGNORECASE) is not None
 
 
@@ -134,7 +134,7 @@ def _extract_document_text(content: bytes, mime_type: str) -> str:
             if total > MAX_EXTRACTED_CHARS:
                 raise OverflowError("extracted_text_limit")
             chunks.append(page_text)
-        text = "\\n\\n".join(chunks)
+        text = "\n\n".join(chunks)
     else:
         text = content.decode("utf-8-sig", errors="strict")
     if not text.strip():
