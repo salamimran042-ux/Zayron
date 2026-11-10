@@ -45,9 +45,17 @@ class AndroidKeystoreSessionStoreTest {
         val access = "secret-access-value-123"
         val refresh = "secret-refresh-value-456"
         store.save(SessionTokens(access, refresh, 1_900_000_000L))
+        assertTrue("Encrypted session file was not created.", sessionFile.isFile)
         val encryptedBytes = sessionFile.readBytes()
-        assertFalse(encryptedBytes.containsSequence(access.toByteArray(Charsets.UTF_8)))
-        assertFalse(encryptedBytes.containsSequence(refresh.toByteArray(Charsets.UTF_8)))
+        assertTrue("Encrypted session file is unexpectedly short (\u0024{encryptedBytes.size} bytes).", encryptedBytes.size >= 40)
+        assertFalse(
+            "Encrypted session file contains the plaintext access-token byte sequence.",
+            encryptedBytes.containsSequence(access.toByteArray(Charsets.UTF_8))
+        )
+        assertFalse(
+            "Encrypted session file contains the plaintext refresh-token byte sequence.",
+            encryptedBytes.containsSequence(refresh.toByteArray(Charsets.UTF_8))
+        )
     }
 
     @Test
