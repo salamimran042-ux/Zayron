@@ -49,6 +49,7 @@ import ai.zayron.client.data.auth.AuthResult
 import ai.zayron.client.data.auth.AuthSession
 import ai.zayron.client.data.auth.BackendAuthRepository
 import ai.zayron.client.data.auth.SignInCredentials
+import ai.zayron.client.data.auth.SignUpResult
 import ai.zayron.client.data.chat.SharedPreferencesCloudConversationIdStore
 import ai.zayron.client.ui.chat.ChatScreen
 import ai.zayron.client.ui.settings.SettingsScreen
@@ -144,18 +145,23 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
 
 @Composable
 private fun SignIn(
-    authRepository: AuthRepository,
+    authRepository: BackendAuthRepository,
     onAuthenticated: (AuthSession) -> Unit
 ) {
+    var isSignUp by rememberSaveable { mutableStateOf(false) }
+    var isPasswordRecovery by rememberSaveable { mutableStateOf(false) }
+    var displayName by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
-            Modifier.fillMaxSize().padding(28.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -163,45 +169,136 @@ private fun SignIn(
             Spacer(Modifier.height(16.dp))
             Text("ZAYRON AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text("Think Beyond Limits.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(40.dp))
-            Text("Welcome back", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text("Sign in to your AI workspace", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(32.dp))
+            Text(
+                when {
+                    isPasswordRecovery -> "Reset your password"
+                    isSignUp -> "Create your account"
+                    else -> "Welcome back"
+                },
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                when {
+                    isPasswordRecovery -> "We'll send a password reset link to your email."
+                    isSignUp -> "Sign up to start using your Zayron AI workspace."
+                    else -> "Sign in to your AI workspace"
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Spacer(Modifier.height(22.dp))
+            if (isSignUp && !isPasswordRecovery) {
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it; errorMessage = null; statusMessage = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Your name (optional)") },
+                    singleLine = true
+                )
+                Spacer(Modifier.height(10.dp))
+            }
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it; errorMessage = null },
+                onValueChange = { email = it; errorMessage = null; statusMessage = null },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Email address") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
             )
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it; errorMessage = null },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Password") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation()
-            )
-            Spacer(Modifier.height(16.dp))
+            if (!isPasswordRecovery) {
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; errorMessage = null; statusMessage = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+            }
+            if (isSignUp && !isPasswordRecovery) {
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it; errorMessage = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Confirm password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Text(
+                    "Use at least 8 characters.",
+                    modifier = Modifier.align(Alignment.Start).padding(top = 6.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (!isSignUp && !isPasswordRecovery) {
+                TextButton(
+                    onClick = { isPasswordRecovery = true; statusMessage = null; errorMessage = null },
+                    modifier = Modifier.align(Alignment.End)
+                ) { Text("Forgot password?") }
+            }
+            Spacer(Modifier.height(12.dp))
             Button(
                 onClick = {
-                    val submittedPassword = password.toCharArray()
-                    password = ""
                     errorMessage = null
-                    scope.launch {
-                        isLoading = true
-                        when (val result = authRepository.signIn(
-                            SignInCredentials(email.trim(), submittedPassword)
-                        )) {
-                            is AuthResult.Authenticated -> onAuthenticated(result.session)
-                            is AuthResult.Failed -> errorMessage = result.reason.toUserMessage()
+                    statusMessage = null
+                    when {
+                        isPasswordRecovery -> scope.launch {
+                            isLoading = true
+                            val failure = authRepository.requestPasswordReset(email.trim())
+                            if (failure == null) {
+                                statusMessage = "If an account exists for this email, a password reset link will be sent."
+                            } else errorMessage = failure.toUserMessage()
+                            isLoading = false
                         }
-                        isLoading = false
+                        isSignUp -> {
+                            if (password.length < 8) {
+                                errorMessage = "Your password must be at least 8 characters."
+                            } else if (password != confirmPassword) {
+                                errorMessage = "The passwords do not match."
+                            } else {
+                                val submittedPassword = password.toCharArray()
+                                password = ""
+                                confirmPassword = ""
+                                scope.launch {
+                                    isLoading = true
+                                    when (val result = authRepository.signUp(email.trim(), submittedPassword, displayName)) {
+                                        is SignUpResult.Registered -> {
+                                            if (result.session != null) {
+                                                onAuthenticated(result.session)
+                                            } else {
+                                                isSignUp = false
+                                                statusMessage = "Your account has been created. Check your email to verify it, then sign in."
+                                            }
+                                        }
+                                        is SignUpResult.Failed -> errorMessage = result.reason.toUserMessage()
+                                    }
+                                    isLoading = false
+                                }
+                            }
+                        }
+                        else -> {
+                            val submittedPassword = password.toCharArray()
+                            password = ""
+                            scope.launch {
+                                isLoading = true
+                                when (val result = authRepository.signIn(
+                                    SignInCredentials(email.trim(), submittedPassword)
+                                )) {
+                                    is AuthResult.Authenticated -> onAuthenticated(result.session)
+                                    is AuthResult.Failed -> errorMessage = result.reason.toUserMessage()
+                                }
+                                isLoading = false
+                            }
+                        }
                     }
                 },
-                enabled = !isLoading && email.isNotBlank() && password.isNotEmpty(),
+                enabled = !isLoading && email.contains("@") &&
+                    (isPasswordRecovery || password.isNotEmpty()) &&
+                    (!isSignUp || (displayName.length <= 80 && confirmPassword.isNotEmpty())),
                 modifier = Modifier.fillMaxWidth().height(50.dp)
             ) {
                 if (isLoading) {
@@ -211,24 +308,49 @@ private fun SignIn(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("Signing in…")
+                    Text("Please wait…")
                 } else {
                     Icon(Icons.Default.Lock, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Sign in")
+                    Text(
+                        when {
+                            isPasswordRecovery -> "Send reset link"
+                            isSignUp -> "Create account"
+                            else -> "Sign in"
+                        }
+                    )
                 }
             }
             errorMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 10.dp))
+            }
+            statusMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 10.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = {
+                when {
+                    isPasswordRecovery -> isPasswordRecovery = false
+                    else -> isSignUp = !isSignUp
+                }
+                password = ""
+                confirmPassword = ""
+                errorMessage = null
+                statusMessage = null
+            }) {
                 Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 10.dp)
+                    when {
+                        isPasswordRecovery -> "Back to sign in"
+                        isSignUp -> "Already have an account? Sign in"
+                        else -> "New to Zayron AI? Create an account"
+                    }
                 )
             }
             if (!AiServiceConfig.isConfigured) {
                 Text(
-                    "The secure backend is not deployed and connected yet. Sign-in will become available when its HTTPS address is configured.",
+                    "The secure backend is not connected yet. Account access will be available when its HTTPS service is ready.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 10.dp)
