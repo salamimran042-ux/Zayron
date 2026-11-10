@@ -71,6 +71,45 @@ class BackendAuthRepository(
             }
         }
 
+    suspend fun signUp(email: String, password: CharArray, displayName: String): SignUpResult =
+        sessionMutex.withLock {
+            try {
+                val body = JSONObject()
+                    .put("email", email.trim())
+                    .put("password", String(password))
+                    .put("display_name", displayName.trim().ifBlank { JSONObject.NULL })
+                when (val result = api.post(REGISTER_PATH, body)) {
+                    is NetworkResult.Success -> {
+                        val response = JSONObject(result.data)
+                        val confirmationRequired = response.optBoolean("confirmation_required", true)
+                        val sessionJson = response.optJSONObject("session")
+                        val authenticated = sessionJson?.let { parseSessionTokens(it.toString()) }
+                        if (authenticated != null) {
+                            withContext(Dispatchers.IO) { sessionStore.save(authenticated.first) }
+                        }
+                        SignUpResult.Registered(confirmationRequired, authenticated?.second)
+                    }
+                    else -> SignUpResult.Failed(mapFailure(result))
+                }
+            } catch (_: Exception) {
+                SignUpResult.Failed(AuthFailureCode.UNKNOWN)
+            } finally {
+                password.fill('\\u0000')
+            }
+        }
+
+    /** Returns null on success; the server response deliberately does not reveal account existence. */
+    suspend fun requestPasswordReset(email: String): AuthFailureCode? {
+        return try {
+            when (val result = api.post(PASSWORD_RESET_PATH, JSONObject().put("email", email.trim()))) {
+                is NetworkResult.Success -> null
+                else -> mapFailure(result)
+            }
+        } catch (_: Exception) {
+            AuthFailureCode.UNKNOWN
+        }
+    }
+
     override suspend fun restoreSession(): AuthSession? = sessionMutex.withLock {
         var tokens = withContext(Dispatchers.IO) { sessionStore.read() } ?: return@withLock null
         if (tokens.accessExpiresAtEpochSeconds <= nowEpochSeconds() + EXPIRY_SKEW_SECONDS) {
@@ -169,6 +208,8 @@ class BackendAuthRepository(
 
     private companion object {
         const val LOGIN_PATH = "api/v1/auth/login"
+        const val REGISTER_PATH = "api/v1/auth/register"
+        const val PASSWORD_RESET_PATH = "api/v1/auth/password-reset"
         const val REFRESH_PATH = "api/v1/auth/refresh"
         const val LOGOUT_PATH = "api/v1/auth/logout"
         const val ME_PATH = "api/v1/me"
