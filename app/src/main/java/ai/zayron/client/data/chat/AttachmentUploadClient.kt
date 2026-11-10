@@ -59,8 +59,9 @@ class AttachmentUploadClient(
             ?: return null
         if (!ChatAttachmentPolicy.isAllowed(mimeType)) return null
         val metadata = queryMetadata(uri) ?: return null
-        if (metadata.second != null && !ChatAttachmentPolicy.isAllowedSize(metadata.second)) return null
-        return ChatAttachmentDescriptor(metadata.first, mimeType, metadata.second)
+        val declaredSize = metadata.second
+        if (declaredSize != null && !ChatAttachmentPolicy.isAllowedSize(declaredSize)) return null
+        return ChatAttachmentDescriptor(metadata.first, mimeType, declaredSize)
     }
 
     suspend fun upload(
@@ -109,18 +110,29 @@ class AttachmentUploadClient(
         }
     }
 
-    private fun queryMetadata(uri: Uri): Pair<String, Long?>? = try {
-        contentResolver.query(
-            uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null
-        )?.use { cursor ->
-            if (!cursor.moveToFirst()) return null
-            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-            val name = if (nameIndex >= 0) cursor.getString(nameIndex) else null
-            val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex) else null
-            (name?.takeIf { it.isNotBlank() } ?: "attachment") to size
+    private fun queryMetadata(uri: Uri): Pair<String, Long?>? {
+        return try {
+            contentResolver.query(
+                uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null
+            )?.use { cursor ->
+                if (!cursor.moveToFirst()) {
+                    null
+                } else {
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    val name = if (nameIndex >= 0) cursor.getString(nameIndex) else null
+                    val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                        cursor.getLong(sizeIndex)
+                    } else {
+                        null
+                    }
+                    (name?.takeIf { it.isNotBlank() } ?: "attachment") to size
+                }
+            }
+        } catch (_: Exception) {
+            null
         }
-    } catch (_: Exception) { null }
+    }
 
     private fun readBounded(uri: Uri): ByteArray? {
         val input = contentResolver.openInputStream(uri) ?: return null
@@ -144,24 +156,26 @@ class AttachmentUploadClient(
         descriptor: ChatAttachmentDescriptor,
         sizeBytes: Long,
         statusCode: Int
-    ): NetworkResult<UploadedChatAttachment> = try {
-        val json = JSONObject(response)
-        val path = sequenceOf("Key", "key", "path", "fullPath")
-            .map { json.optString(it) }
-            .firstOrNull { it.isNotBlank() }
-            ?: return NetworkResult.StreamError("INVALID_ATTACHMENT_RESPONSE")
-        NetworkResult.Success(
-            UploadedChatAttachment(
-                UUID.randomUUID().toString(),
-                descriptor.displayName,
-                descriptor.mimeType,
-                sizeBytes,
-                path
-            ),
-            statusCode
-        )
-    } catch (_: Exception) {
-        NetworkResult.StreamError("INVALID_ATTACHMENT_RESPONSE")
+    ): NetworkResult<UploadedChatAttachment> {
+        return try {
+            val json = JSONObject(response)
+            val path = sequenceOf("Key", "key", "path", "fullPath")
+                .map { json.optString(it) }
+                .firstOrNull { it.isNotBlank() }
+                ?: return NetworkResult.StreamError("INVALID_ATTACHMENT_RESPONSE")
+            NetworkResult.Success(
+                UploadedChatAttachment(
+                    UUID.randomUUID().toString(),
+                    descriptor.displayName,
+                    descriptor.mimeType,
+                    sizeBytes,
+                    path
+                ),
+                statusCode
+            )
+        } catch (_: Exception) {
+            NetworkResult.StreamError("INVALID_ATTACHMENT_RESPONSE")
+        }
     }
 
     private fun safeFilename(value: String): String =
