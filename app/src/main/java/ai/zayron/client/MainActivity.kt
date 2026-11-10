@@ -575,6 +575,7 @@ private fun Workspace(
                         accountEmail = session.email,
                         onToggleTheme = onToggleTheme,
                         onSignOut = onSignOut,
+                        onOpenCredits = { mode = "Credits" },
                         modifier = Modifier.fillMaxSize()
                     )
                     else -> ToolWorkspaceScreen(mode = mode, modifier = Modifier.fillMaxSize())
