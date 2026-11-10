@@ -143,6 +143,58 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
     }
 }
 
+
+@Composable
+private fun WorkspaceInfoScreen(
+    section: String,
+    onOpenChat: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val title = when (section) {
+        "Credits" -> "Credits & usage"
+        else -> section
+    }
+    val description = when (section) {
+        "Projects" -> "Keep related conversations, files and AI work together in one place."
+        "History" -> "Your conversations belong to your Zayron account and will appear here as history sync is completed."
+        "Plugins" -> "Connect trusted services and tools to extend what Zayron AI can do."
+        else -> "Review your available credits, usage and transaction history."
+    }
+    val status = when (section) {
+        "Projects" -> "Project workspace is being connected"
+        "History" -> "Conversation history sync is being connected"
+        "Plugins" -> "Plugin connections are not active yet"
+        else -> "Live wallet and credit balance are not connected yet"
+    }
+    Column(
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(description, style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(status, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "This area is available in the workspace navigation. We will only show real account data and working features here; no sample credit balance, fake transactions or pretend integrations.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        OutlinedButton(onClick = onOpenChat, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.ChatBubbleOutline, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Return to Zayron AI")
+        }
+    }
+}
+
 @Composable
 private fun SignIn(
     authRepository: BackendAuthRepository,
@@ -388,9 +440,16 @@ private fun Workspace(
 
     val sections = listOf(
         "YOUR ASSISTANT" to listOf(
+            "Home" to "Home",
             "Zayron AI" to "AI Chat"
         ),
+        "YOUR WORK" to listOf(
+            "Projects" to "Projects",
+            "History" to "History",
+            "Plugins" to "Plugins"
+        ),
         "ACCOUNT" to listOf(
+            "Credits & usage" to "Credits",
             "Settings" to "Settings"
         )
     )
@@ -403,6 +462,10 @@ private fun Workspace(
         "App Builder" -> Icons.Default.PhoneAndroid
         "Document AI" -> Icons.Default.Description
         "Settings" -> Icons.Default.Settings
+        "Projects" -> Icons.Default.FolderOpen
+        "History" -> Icons.Default.History
+        "Plugins" -> Icons.Default.Extension
+        "Credits" -> Icons.Default.AccountBalanceWallet
         else -> Icons.Default.Mic
     }
 
@@ -497,7 +560,16 @@ private fun Workspace(
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (mode) {
+                    "Home" -> DashboardScreen(
+                        onToolSelected = { selected -> mode = selected },
+                        modifier = Modifier.fillMaxSize()
+                    )
                     "AI Chat" -> ChatScreen(Modifier.fillMaxSize())
+                    "Projects", "History", "Plugins", "Credits" -> WorkspaceInfoScreen(
+                        section = mode,
+                        onOpenChat = { mode = "AI Chat" },
+                        modifier = Modifier.fillMaxSize()
+                    )
                     "Settings" -> SettingsScreen(
                         darkTheme = darkTheme,
                         accountEmail = session.email,
