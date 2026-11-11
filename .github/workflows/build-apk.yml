@@ -223,7 +223,7 @@ jobs:
       - name: Verify the versioned migration set
         run: |
           count=$(find migrations -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]_*.sql' | wc -l)
-          test "$count" -eq 14
+          test "$count" -eq 15
           test -z "${ZAYRON_MIGRATION_DATABASE_URL:-}"
           echo "Found $count versioned migrations; no live database connection is configured."
 
