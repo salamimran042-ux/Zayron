@@ -177,6 +177,7 @@ async def process_document_job(
     storage_client: httpx.AsyncClient,
     settings: Settings,
     job: dict[str, Any],
+    lease_lost: asyncio.Event | None = None,
 ) -> None:
     """Retrieve, extract, and persist a bounded result for the currently leased job."""
     job_id = str(job["id"])
@@ -242,6 +243,8 @@ async def process_document_job(
         }
         if len(json.dumps(result_payload, ensure_ascii=False).encode("utf-8")) > MAX_RESULT_BYTES:
             raise DocumentJobError("EXTRACTED_RESULT_TOO_LARGE")
+        if lease_lost is not None and lease_lost.is_set():
+            return
         response = await api_client.post(
             f"/internal/v1/jobs/{job_id}/complete",
             json={"worker_id": worker_id, "result_payload": result_payload},
@@ -277,6 +280,52 @@ async def _fail_job(
         response.raise_for_status()
 
 
+async def heartbeat_lease_once(
+    api_client: httpx.AsyncClient,
+    *,
+    job_id: str,
+    worker_id: str,
+    lease_seconds: int,
+    lease_lost: asyncio.Event,
+) -> bool:
+    """Renew one active lease; return False when ownership is no longer valid."""
+    response = await api_client.post(
+        f"/internal/v1/jobs/{job_id}/heartbeat",
+        json={"worker_id": worker_id, "lease_seconds": lease_seconds},
+    )
+    if response.status_code == 409:
+        lease_lost.set()
+        return False
+    response.raise_for_status()
+    return True
+
+
+async def _maintain_lease(
+    api_client: httpx.AsyncClient,
+    *,
+    job_id: str,
+    worker_id: str,
+    lease_seconds: int,
+    lease_lost: asyncio.Event,
+) -> None:
+    interval = max(5, lease_seconds // 3)
+    while not lease_lost.is_set():
+        await asyncio.sleep(interval)
+        try:
+            if not await heartbeat_lease_once(
+                api_client,
+                job_id=job_id,
+                worker_id=worker_id,
+                lease_seconds=lease_seconds,
+                lease_lost=lease_lost,
+            ):
+                return
+        except httpx.HTTPError:
+            # A transient heartbeat outage must not falsely transfer ownership.
+            # The server remains authoritative and completion still checks expiry.
+            continue
+
+
 async def run_once(
     api_client: httpx.AsyncClient,
     storage_client: httpx.AsyncClient,
@@ -294,7 +343,23 @@ async def run_once(
     job = response.json().get("job")
     if not job:
         return False
-    await process_document_job(api_client, storage_client, settings, job)
+    lease_lost = asyncio.Event()
+    heartbeat_task = asyncio.create_task(
+        _maintain_lease(
+            api_client,
+            job_id=str(job["id"]),
+            worker_id=settings.worker_id,
+            lease_seconds=settings.worker_lease_seconds,
+            lease_lost=lease_lost,
+        )
+    )
+    try:
+        await process_document_job(
+            api_client, storage_client, settings, job, lease_lost=lease_lost
+        )
+    finally:
+        heartbeat_task.cancel()
+        await asyncio.gather(heartbeat_task, return_exceptions=True)
     return True
 
 
