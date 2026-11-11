@@ -298,3 +298,21 @@ async def test_worker_stops_persisting_when_heartbeat_reports_lost_lease():
 
     assert renewed is False
     assert lost.is_set() is True
+
+
+
+@pytest.mark.asyncio
+async def test_worker_rejects_malformed_signed_url_response_safely():
+    async def handler(request):
+        return httpx.Response(200, content=b"not-json")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(DocumentJobError, match="ATTACHMENT_SIGNING_REJECTED"):
+            await download_private_attachment(
+                client,
+                supabase_url="https://project.supabase.co",
+                secret_key="sb_secret_test",
+                storage_path=PATH,
+                expected_size=5,
+                mime_type="text/plain",
+            )
