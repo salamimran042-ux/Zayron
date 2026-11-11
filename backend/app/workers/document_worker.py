@@ -59,6 +59,10 @@ def validate_document_job(job: dict[str, Any]) -> dict[str, Any]:
     except (KeyError, TypeError, ValueError, AttributeError):
         raise DocumentJobError("DOCUMENT_JOB_PAYLOAD_INVALID") from None
 
+    if not isinstance(payload, dict) or not isinstance(attachment, dict):
+        raise DocumentJobError("DOCUMENT_JOB_PAYLOAD_INVALID")
+    if not isinstance(mime_type, str):
+        raise DocumentJobError("DOCUMENT_TYPE_NOT_SUPPORTED")
     extension = MIME_EXTENSIONS.get(mime_type)
     if extension is None:
         raise DocumentJobError("DOCUMENT_TYPE_NOT_SUPPORTED")
