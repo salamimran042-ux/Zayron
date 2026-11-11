@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any
 from urllib.parse import quote
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 
@@ -23,7 +23,7 @@ MIME_EXTENSIONS = {
     "text/csv": "csv",
     "application/json": "json",
 }
-MAX_RESULT_BYTES = 120_000
+MAX_RESULT_BYTES = 420_000
 STORAGE_TIMEOUT = httpx.Timeout(60.0, connect=5.0)
 
 
@@ -37,6 +37,11 @@ class DocumentJobError(Exception):
 
 class StorageUnavailable(Exception):
     """A transient storage failure that may be retried."""
+
+
+def create_worker_instance_id(base_id: str) -> str:
+    """Give each process a unique lease identity so stale replicas cannot complete jobs."""
+    return f"{base_id[:80]}-{uuid4().hex[:12]}"
 
 
 def validate_document_job(job: dict[str, Any]) -> dict[str, Any]:
@@ -262,6 +267,8 @@ async def run_forever(settings: Settings) -> None:
     if not settings.supabase_url:
         raise SystemExit("ZAYRON_SUPABASE_URL is not configured.")
 
+    # A stale replica must not share the lease identity of a process that reclaimed its job.
+    settings = settings.model_copy(update={"worker_id": create_worker_instance_id(settings.worker_id)})
     api_headers = {"Authorization": f"Bearer {settings.worker_token.get_secret_value()}"}
     async with (
         httpx.AsyncClient(
