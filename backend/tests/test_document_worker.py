@@ -209,7 +209,15 @@ async def test_document_worker_verifies_source_attachment_then_persists_extracti
         raise AssertionError(f"Unexpected API path: {request.url.path}")
 
     async def storage_handler(request):
-        assert request.headers["apikey"] == "sb_secret_test"
+        if request.method == "POST":
+            assert request.headers["apikey"] == "sb_secret_test"
+            assert request.headers.get("authorization") is None
+            return httpx.Response(
+                200,
+                json={"signedURL": f"/object/sign/zayron-attachments/{PATH}?token=short-lived"},
+            )
+        assert request.headers.get("apikey") is None
+        assert request.headers.get("authorization") is None
         return httpx.Response(
             200,
             headers={"content-type": "text/plain", "content-length": "5"},
