@@ -136,7 +136,26 @@ async def process_document_job(
     job_id = str(job["id"])
     worker_id = settings.worker_id
     try:
-        attachment = validate_document_job(job)
+        verification = await api_client.post(
+            f"/internal/v1/jobs/{job_id}/attachment",
+            json={"worker_id": worker_id},
+        )
+        if verification.status_code == 409:
+            return
+        if verification.status_code in (404, 422):
+            detail = verification.json().get("detail", {})
+            code = detail.get("code", "ATTACHMENT_NOT_FOUND") if isinstance(detail, dict) else "ATTACHMENT_NOT_FOUND"
+            await _fail_job(api_client, job_id, worker_id, code, 0)
+            return
+        verification.raise_for_status()
+        verified_attachment = verification.json().get("attachment")
+        if not isinstance(verified_attachment, dict):
+            raise DocumentJobError("DOCUMENT_JOB_PAYLOAD_INVALID")
+        job_payload = dict(job.get("input_payload") or {})
+        job_payload["attachment"] = verified_attachment
+        verified_job = dict(job)
+        verified_job["input_payload"] = job_payload
+        attachment = validate_document_job(verified_job)
         secret = settings.effective_supabase_secret_key
         if secret is None or not secret.get_secret_value():
             raise DocumentJobError("DOCUMENT_STORAGE_NOT_CONFIGURED")
