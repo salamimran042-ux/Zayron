@@ -128,12 +128,27 @@ async def create_document_job(
                          available_at, created_at""",
             user_id, json.dumps(payload), idempotency_key,
         )
+        created = row is not None
         if row is None:
             row = await connection.fetchrow(
                 """SELECT id, job_type, status, attempts, max_attempts,
                           available_at, created_at
                    FROM public.ai_jobs WHERE user_id = $1 AND idempotency_key = $2""",
                 user_id, idempotency_key,
+            )
+        elif created:
+            # Record the first queue transition in the same transaction as the
+            # job insert. An idempotent replay must not emit another queued event.
+            await connection.execute(
+                """INSERT INTO public.ai_job_events
+                     (id, job_id, user_id, event_type, detail)
+                   VALUES (gen_random_uuid(), $1, $2, 'queued', $3::jsonb)""",
+                row["id"], user_id,
+                json.dumps({
+                    "source": "chat_attachment",
+                    "attachment_id": str(body.attachment_id),
+                    "operation": "extract_text",
+                }),
             )
     if row is None:
         raise HTTPException(503, detail={"code": "DOCUMENT_JOB_CREATE_FAILED"})
