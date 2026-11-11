@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,9 +31,9 @@ class Settings(BaseSettings):
 
     worker_token: SecretStr | None = None
     worker_api_url: str | None = None
-    worker_id: str = "zayron-document-worker"
-    worker_poll_seconds: int = 5
-    worker_lease_seconds: int = 180
+    worker_id: str = Field(default="zayron-document-worker", min_length=3, max_length=100, pattern="^[a-zA-Z0-9._-]+$")
+    worker_poll_seconds: int = Field(default=5, ge=1, le=60)
+    worker_lease_seconds: int = Field(default=600, ge=30, le=900)
 
     @property
     def effective_supabase_publishable_key(self) -> SecretStr | None:
