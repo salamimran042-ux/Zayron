@@ -136,3 +136,64 @@ def test_worker_settings_select_new_secret_key_before_legacy_service_role():
         _env_file=None,
     )
     assert settings.effective_supabase_secret_key.get_secret_value() == "sb_secret_current"
+
+
+
+@pytest.mark.asyncio
+async def test_document_worker_verifies_source_attachment_then_persists_extraction():
+    from app.workers.document_worker import process_document_job
+
+    calls = []
+
+    async def api_handler(request):
+        calls.append(request.url.path)
+        if request.url.path.endswith("/attachment"):
+            return httpx.Response(
+                200,
+                json={
+                    "attachment": {
+                        "id": ATTACHMENT,
+                        "display_name": "notes.txt",
+                        "mime_type": "text/plain",
+                        "size_bytes": 5,
+                        "storage_path": PATH,
+                    }
+                },
+            )
+        if request.url.path.endswith("/complete"):
+            body = __import__("json").loads(request.content)
+            assert body["result_payload"]["extracted_text"] == "hello"
+            assert body["result_payload"]["attachment_id"] == ATTACHMENT
+            return httpx.Response(200, json={"status": "succeeded"})
+        raise AssertionError(f"Unexpected API path: {request.url.path}")
+
+    async def storage_handler(request):
+        assert request.headers["apikey"] == "sb_secret_test"
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/plain", "content-length": "5"},
+            content=b"hello",
+        )
+
+    settings = Settings(
+        worker_id="document-worker",
+        supabase_url="https://project.supabase.co",
+        supabase_secret_key="sb_secret_test",
+        _env_file=None,
+    )
+    job = valid_job()
+    async with (
+        httpx.AsyncClient(
+            base_url="https://api.zayron.test",
+            transport=httpx.MockTransport(api_handler),
+        ) as api_client,
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(storage_handler),
+        ) as storage_client,
+    ):
+        await process_document_job(api_client, storage_client, settings, job)
+
+    assert calls == [
+        f"/internal/v1/jobs/{job['id']}/attachment",
+        f"/internal/v1/jobs/{job['id']}/complete",
+    ]
