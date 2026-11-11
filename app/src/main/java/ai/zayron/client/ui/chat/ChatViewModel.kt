@@ -186,11 +186,39 @@ class ChatViewModel(
             val assistantId = UUID.randomUUID().toString()
             try {
             val cloudSaveResult = try {
-                cloudChatStore.saveUserMessage(cleanText, attachments)
+                cloudChatStore.saveUserMessageWithReceipt(cleanText, attachments)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 NetworkResult.ConnectionError
+            }
+            var documentQueueNotice: String? = null
+            val savedReceipt = (cloudSaveResult as? NetworkResult.Success)?.data
+            if (savedReceipt != null) {
+                val documentAttachments = attachments.filter {
+                    it.mimeType in setOf(
+                        "application/pdf", "text/plain", "text/markdown",
+                        "text/csv", "application/json"
+                    )
+                }
+                if (documentAttachments.isNotEmpty()) {
+                    var queued = 0
+                    var failed = 0
+                    for (attachment in documentAttachments) {
+                        when (cloudChatStore.enqueueDocumentJob(savedReceipt, attachment.id)) {
+                            is NetworkResult.Success -> queued++
+                            else -> failed++
+                        }
+                    }
+                    documentQueueNotice = when {
+                        queued > 0 && failed == 0 ->
+                            "Your document(s) were securely queued for text extraction."
+                        queued > 0 ->
+                            "$queued document(s) queued; $failed could not be queued."
+                        else ->
+                            "Your message was saved, but document extraction could not be queued."
+                    }
+                }
             }
 
             val events = Channel<ChatStreamEvent>(Channel.UNLIMITED)
@@ -261,7 +289,7 @@ class ChatViewModel(
             _serviceMessage.value = when {
                 result is NetworkResult.Success && !cloudSaved ->
                     "Your AI response completed, but cloud chat history could not be saved."
-                result is NetworkResult.Success -> null
+                result is NetworkResult.Success -> documentQueueNotice
                 cloudSaved ->
                     "Your message is saved in cloud history, but the AI response service is not connected yet."
                 else -> ApiErrorMapper.userMessage(result)
