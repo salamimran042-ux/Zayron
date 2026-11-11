@@ -154,4 +154,48 @@ class BackendCloudChatStoreTest {
         )
     }
 
+
+    @Test
+    fun returnsServerMessageReceiptAndQueuesDocumentAgainstThatMessage() = runBlocking {
+        val conversationId = "00000000-0000-0000-0000-000000000123"
+        val messageId = "00000000-0000-0000-0000-000000000201"
+        val attachmentId = "00000000-0000-0000-0000-000000000010"
+        val jobId = "00000000-0000-0000-0000-000000000301"
+        val requests = mutableListOf<Request>()
+        val store = BackendCloudChatStore(
+            accessTokenProvider = ChatAccessTokenProvider { "user-session-token" },
+            conversationIds = MemoryConversationIds(),
+            endpointProvider = { path ->
+                HttpUrl.Builder().scheme("https").host("api.zayron.test")
+                    .addPathSegments(path).build()
+            },
+            requestExecutor = { request ->
+                requests += request
+                when (requests.size) {
+                    1 -> NetworkResult.Success("""{"conversation":{"id":"$conversationId"}}""", 201)
+                    2 -> NetworkResult.Success("""{"message":{"id":"$messageId"}}""", 201)
+                    else -> NetworkResult.Success("""{"id":"$jobId","status":"queued"}""", 202)
+                }
+            }
+        )
+
+        val saved = store.saveUserMessageWithReceipt("Review this document")
+        assertTrue(saved is NetworkResult.Success)
+        val receipt = (saved as NetworkResult.Success<CloudMessageReceipt?>).data!!
+        assertEquals(conversationId, receipt.conversationId)
+        assertEquals(messageId, receipt.messageId)
+
+        val queued = store.enqueueDocumentJob(receipt, attachmentId)
+        assertTrue(queued is NetworkResult.Success)
+        assertEquals(jobId, (queued as NetworkResult.Success).data)
+        assertEquals("/api/v1/documents/jobs", requests[2].url.encodedPath)
+        assertEquals("Bearer user-session-token", requests[2].header("Authorization"))
+        val body = okio.Buffer()
+        requests[2].body!!.writeTo(body)
+        val json = org.json.JSONObject(body.readUtf8())
+        assertEquals(conversationId, json.getString("conversation_id"))
+        assertEquals(messageId, json.getString("message_id"))
+        assertEquals(attachmentId, json.getString("attachment_id"))
+    }
+
 }
