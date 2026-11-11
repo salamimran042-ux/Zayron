@@ -39,7 +39,7 @@ class BackendCloudChatStoreTest {
                         """{"conversation":{"id":"$conversationId"}}""",
                         201
                     )
-                    else -> NetworkResult.Success("""{"message":{"id":"message-1"}}""", 201)
+                    else -> NetworkResult.Success("""{"message":{"id":"00000000-0000-0000-0000-000000000201"}}""", 201)
                 }
             }
         )
@@ -103,7 +103,7 @@ class BackendCloudChatStoreTest {
                     2 -> NetworkResult.Success(
                         """{"conversation":{"id":"$secondId"}}""", 201
                     )
-                    else -> NetworkResult.Success("""{"message":{"id":"message-2"}}""", 201)
+                    else -> NetworkResult.Success("""{"message":{"id":"00000000-0000-0000-0000-000000000202"}}""", 201)
                 }
             }
         )
@@ -132,7 +132,7 @@ class BackendCloudChatStoreTest {
                         """{"conversation":{"id":"$conversationId"}}""", 201
                     )
                 } else {
-                    NetworkResult.Success("""{"message":{"id":"message-2"}}""", 201)
+                    NetworkResult.Success("""{"message":{"id":"00000000-0000-0000-0000-000000000202"}}""", 201)
                 }
             }
         )
