@@ -4,7 +4,7 @@ import asyncio
 import json
 import re
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urljoin, urlparse
 from uuid import UUID, uuid4
 
 import httpx
@@ -96,15 +96,43 @@ async def download_private_attachment(
     expected_size: int,
     mime_type: str,
 ) -> bytes:
-    """Download one validated object; never list or enumerate the private bucket."""
-    url = (
-        f"{supabase_url.rstrip('/')}/storage/v1/object/"
-        f"{quote(BUCKET, safe='')}/{quote(storage_path, safe='/')}"
+    """Create a short-lived signed URL, then download exactly one private object."""
+    base_url = supabase_url.rstrip("/") + "/"
+    object_path = (
+        f"storage/v1/object/sign/{quote(BUCKET, safe='')}/"
+        f"{quote(storage_path, safe='/')}"
     )
-    headers = {"apikey": secret_key}
+    sign_url = urljoin(base_url, object_path)
     try:
-        async with client.stream("GET", url, headers=headers) as response:
-            if response.status_code in (404, 403):
+        signed_response = await client.post(
+            sign_url,
+            headers={"apikey": secret_key},
+            json={"expiresIn": 300},
+        )
+        if signed_response.status_code in (403, 404):
+            raise DocumentJobError("ATTACHMENT_NOT_FOUND")
+        if signed_response.status_code == 429 or signed_response.status_code >= 500:
+            raise StorageUnavailable("storage_temporarily_unavailable")
+        if signed_response.status_code not in (200, 201):
+            raise DocumentJobError("ATTACHMENT_SIGNING_REJECTED")
+        signed_payload = signed_response.json()
+        signed_path = signed_payload.get("signedURL") or signed_payload.get("signedUrl")
+        if not isinstance(signed_path, str) or not signed_path:
+            raise DocumentJobError("ATTACHMENT_SIGNING_REJECTED")
+        download_url = urljoin(base_url, signed_path.lstrip("/") if signed_path.startswith("/") else signed_path)
+        base_parts = urlparse(base_url)
+        download_parts = urlparse(download_url)
+        if (
+            download_parts.scheme != "https"
+            or download_parts.netloc != base_parts.netloc
+            or not download_parts.path.startswith("/storage/v1/object/sign/")
+        ):
+            raise DocumentJobError("ATTACHMENT_SIGNING_REJECTED")
+
+        # The signed URL is a narrowly scoped bearer capability. Do not forward
+        # the project secret or worker credentials to this request.
+        async with client.stream("GET", download_url) as response:
+            if response.status_code in (403, 404):
                 raise DocumentJobError("ATTACHMENT_NOT_FOUND")
             if response.status_code == 429 or response.status_code >= 500:
                 raise StorageUnavailable("storage_temporarily_unavailable")
