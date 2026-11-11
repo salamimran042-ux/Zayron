@@ -25,9 +25,15 @@ class Settings(BaseSettings):
     supabase_secret_key: SecretStr | None = None
 
     # Backward-compatible aliases for projects still using legacy key names.
-    # Prefer ZAYRON_SUPABASE_PUBLISHABLE_KEY / ZAYRON_SUPABASE_SECRET_KEY.
     supabase_anon_key: SecretStr | None = None
     supabase_service_role_key: SecretStr | None = None
+
+    # OpenAI-compatible provider bridge. All credentials remain server-side.
+    # Base URL should be the provider's API root, e.g. https://host.example/v1.
+    ai_provider_base_url: str | None = None
+    ai_provider_api_key: SecretStr | None = None
+    ai_provider_model: str | None = None
+    ai_provider_timeout_seconds: int = Field(default=90, ge=10, le=180)
 
     worker_token: SecretStr | None = None
     worker_api_url: str | None = None
@@ -37,38 +43,29 @@ class Settings(BaseSettings):
 
     @property
     def effective_supabase_publishable_key(self) -> SecretStr | None:
-        """Prefer the current publishable key, falling back to legacy anon key."""
         return self.supabase_publishable_key or self.supabase_anon_key
 
     @property
     def effective_supabase_secret_key(self) -> SecretStr | None:
-        """Prefer the current server-only secret key, falling back to legacy service_role."""
         return self.supabase_secret_key or self.supabase_service_role_key
 
     def integration_status(self) -> dict[str, str]:
-        """Expose configuration presence without returning credentials."""
         publishable_configured = self.effective_supabase_publishable_key is not None
-        secret_configured = (
-            self.effective_supabase_secret_key is not None
+        secret_configured = self.effective_supabase_secret_key is not None
+        ai_configured = bool(
+            self.ai_provider_base_url and self.ai_provider_api_key and self.ai_provider_model
         )
         return {
             "database": "configured" if self.database_url else "not_configured",
-            "migration_database": (
-                "configured" if self.migration_database_url else "not_configured"
-            ),
+            "migration_database": "configured" if self.migration_database_url else "not_configured",
             "supabase_url": "configured" if self.supabase_url else "not_configured",
             "supabase_publishable_key": "configured" if publishable_configured else "not_configured",
             "supabase_secret_key": "configured" if secret_configured else "not_configured",
-            "supabase_anon_key_legacy": (
-                "configured" if self.supabase_anon_key else "not_configured"
-            ),
-            "supabase_service_role_key_legacy": (
-                "configured" if self.supabase_service_role_key else "not_configured"
-            ),
-            "supabase_jwt_verification": (
-                "configured" if self.supabase_url else "not_configured"
-            ),
+            "supabase_anon_key_legacy": "configured" if self.supabase_anon_key else "not_configured",
+            "supabase_service_role_key_legacy": "configured" if self.supabase_service_role_key else "not_configured",
+            "supabase_jwt_verification": "configured" if self.supabase_url else "not_configured",
             "worker": "configured" if self.worker_token else "not_configured",
+            "ai_provider": "configured" if ai_configured else "not_configured",
         }
 
 
