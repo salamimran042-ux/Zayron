@@ -16,6 +16,13 @@ import java.util.UUID
 
 data class CloudMessageReceipt(val conversationId: String, val messageId: String)
 
+data class DocumentJobStatus(
+    val id: String,
+    val status: String,
+    val extractedText: String? = null,
+    val errorCode: String? = null
+)
+
 interface CloudChatStore {
     suspend fun saveUserMessage(
         content: String,
@@ -41,6 +48,10 @@ interface CloudChatStore {
         receipt: CloudMessageReceipt,
         attachmentId: String
     ): NetworkResult<String> = NetworkResult.NotConfigured
+
+    /** Reads the authenticated owner's extraction status and bounded text result. */
+    suspend fun getDocumentJobStatus(jobId: String): NetworkResult<DocumentJobStatus> =
+        NetworkResult.NotConfigured
 
     fun startNewConversation()
 }
@@ -139,6 +150,48 @@ class BackendCloudChatStore(
                 NetworkResult.Success(id, result.statusCode)
             } catch (_: Exception) {
                 NetworkResult.StreamError("INVALID_DOCUMENT_JOB_RESPONSE")
+            }
+            is NetworkResult.HttpError -> result
+            is NetworkResult.StreamError -> result
+            NetworkResult.AuthenticationRequired -> NetworkResult.AuthenticationRequired
+            NetworkResult.NotConfigured -> NetworkResult.NotConfigured
+            NetworkResult.RejectedRequest -> NetworkResult.RejectedRequest
+            NetworkResult.ConnectionError -> NetworkResult.ConnectionError
+        }
+    }
+
+    override suspend fun getDocumentJobStatus(jobId: String): NetworkResult<DocumentJobStatus> {
+        val parsedId = try { UUID.fromString(jobId).toString() } catch (_: Exception) {
+            return NetworkResult.RejectedRequest
+        }
+        val token = accessTokenProvider?.getAccessToken()?.takeIf { it.isNotBlank() }
+            ?: return NetworkResult.AuthenticationRequired
+        val url = endpointProvider("api/v1/documents/jobs/$parsedId")
+            ?: return NetworkResult.NotConfigured
+        val request = Request.Builder()
+            .url(url)
+            .header("Accept", "application/json")
+            .header("Authorization", "Bearer $token")
+            .get()
+            .build()
+        return when (val result = requestExecutor(request)) {
+            is NetworkResult.Success -> try {
+                val json = JSONObject(result.data)
+                val status = json.getString("status")
+                val resultJson = json.optJSONObject("result")
+                val extractedText = resultJson?.optString("extracted_text")
+                    ?.takeIf { !it.isNullOrBlank() && it != "null" }
+                NetworkResult.Success(
+                    DocumentJobStatus(
+                        id = json.getString("id"),
+                        status = status,
+                        extractedText = extractedText,
+                        errorCode = json.optString("error_code").takeIf { it.isNotBlank() && it != "null" }
+                    ),
+                    result.statusCode
+                )
+            } catch (_: Exception) {
+                NetworkResult.StreamError("INVALID_DOCUMENT_JOB_STATUS_RESPONSE")
             }
             is NetworkResult.HttpError -> result
             is NetworkResult.StreamError -> result
