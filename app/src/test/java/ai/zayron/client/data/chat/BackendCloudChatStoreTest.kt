@@ -198,4 +198,34 @@ class BackendCloudChatStoreTest {
         assertEquals(attachmentId, json.getString("attachment_id"))
     }
 
+    @Test
+    fun retrievesAuthenticatedDocumentJobStatusAndExtractedText() = runBlocking {
+        val jobId = "00000000-0000-0000-0000-000000000301"
+        val requests = mutableListOf<Request>()
+        val store = BackendCloudChatStore(
+            accessTokenProvider = ChatAccessTokenProvider { "user-session-token" },
+            conversationIds = MemoryConversationIds(),
+            endpointProvider = { path ->
+                HttpUrl.Builder().scheme("https").host("api.zayron.test")
+                    .addPathSegments(path).build()
+            },
+            requestExecutor = { request ->
+                requests += request
+                NetworkResult.Success(
+                    """{"id":"$jobId","status":"succeeded","error_code":null,"result":{"extracted_text":"Private document contents"}}""",
+                    200
+                )
+            }
+        )
+
+        val result = store.getDocumentJobStatus(jobId)
+        assertTrue(result is NetworkResult.Success)
+        val status = (result as NetworkResult.Success).data
+        assertEquals("succeeded", status.status)
+        assertEquals("Private document contents", status.extractedText)
+        assertEquals("/api/v1/documents/jobs/$jobId", requests.single().url.encodedPath)
+        assertEquals("GET", requests.single().method)
+        assertEquals("Bearer user-session-token", requests.single().header("Authorization"))
+    }
+
 }
