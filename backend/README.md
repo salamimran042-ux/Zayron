@@ -112,11 +112,11 @@ cd backend
 python -m app.workers.document_worker
 ```
 
-Configure the worker with ZAYRON_WORKER_API_URL, ZAYRON_WORKER_TOKEN, ZAYRON_WORKER_ID, ZAYRON_SUPABASE_URL, and ZAYRON_SUPABASE_SECRET_KEY in the hosting provider's protected environment. Do not add these secrets to GitHub source, Android resources, APK build arguments, or logs. The worker process claims only document_ingest jobs.
+Configure the worker with ZAYRON_WORKER_API_URL, ZAYRON_WORKER_TOKEN, ZAYRON_WORKER_ID, ZAYRON_SUPABASE_URL, and ZAYRON_SUPABASE_SECRET_KEY in the hosting provider's protected environment. Do not add these secrets to GitHub source, Android resources, APK build arguments, or logs. The worker process claims only document_ingest jobs. Each process appends a random instance suffix to the configured worker ID, preventing a stale replica from completing work leased by a newer process.
 
 Before retrieving a file, the worker asks the API to re-check the active lease and compare the queued attachment reference against the original user message under that user's RLS context. The worker then downloads only that exact path from the private zayron-attachments bucket using the server-only Supabase secret key in the apikey header. It does not list the bucket, create a public URL, or accept a client-supplied path. The downloaded MIME type and byte count must match the stored message metadata.
 
-Extraction supports text-layer PDFs (maximum 100 pages), plain text, Markdown, CSV and JSON, with a 10 MiB input cap and a 100,000-character extraction cap. Encrypted PDFs, malformed documents, unsupported types, mismatched metadata and oversized results fail with bounded machine-readable error codes. Scanned PDF OCR and image understanding remain unsupported until a dedicated OCR/vision adapter is added.
+Extraction supports text-layer PDFs (maximum 100 pages), plain text, Markdown, CSV and JSON, with a 10 MiB input cap, a 100,000-character extraction cap and a 420 KiB serialized result cap. Encrypted PDFs, malformed documents, unsupported types, mismatched metadata and oversized results fail with bounded machine-readable error codes. Scanned PDF OCR and image understanding remain unsupported until a dedicated OCR/vision adapter is added.
 
 On success, the worker writes a bounded extraction result to the same leased ai_jobs.result_payload record. Completion is conditional on the worker still owning an unexpired lease; a stale worker cannot overwrite a newer attempt. Job lifecycle events record state and safe metadata, never file bytes or extracted text. The authenticated owner can poll GET /api/v1/documents/jobs/{job_id} to read status and the completed result; RLS and the user-scoped API transaction prevent cross-account reads.
 
