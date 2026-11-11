@@ -30,18 +30,26 @@ class Settings(BaseSettings):
     supabase_service_role_key: SecretStr | None = None
 
     worker_token: SecretStr | None = None
+    worker_api_url: str | None = None
+    worker_id: str = "zayron-document-worker"
+    worker_poll_seconds: int = 5
+    worker_lease_seconds: int = 180
 
     @property
     def effective_supabase_publishable_key(self) -> SecretStr | None:
         """Prefer the current publishable key, falling back to legacy anon key."""
         return self.supabase_publishable_key or self.supabase_anon_key
 
+    @property
+    def effective_supabase_secret_key(self) -> SecretStr | None:
+        """Prefer the current server-only secret key, falling back to legacy service_role."""
+        return self.supabase_secret_key or self.supabase_service_role_key
+
     def integration_status(self) -> dict[str, str]:
         """Expose configuration presence without returning credentials."""
         publishable_configured = self.effective_supabase_publishable_key is not None
         secret_configured = (
-            self.supabase_secret_key is not None
-            or self.supabase_service_role_key is not None
+            self.effective_supabase_secret_key is not None
         )
         return {
             "database": "configured" if self.database_url else "not_configured",
