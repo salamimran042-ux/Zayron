@@ -25,6 +25,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.util.UUID
 
 /**
@@ -208,8 +209,11 @@ class ChatViewModel(
                     var queued = 0
                     var failed = 0
                     for (attachment in documentAttachments) {
-                        when (cloudChatStore.enqueueDocumentJob(savedReceipt, attachment.id)) {
-                            is NetworkResult.Success -> queued++
+                        when (val queuedResult = cloudChatStore.enqueueDocumentJob(savedReceipt, attachment.id)) {
+                            is NetworkResult.Success -> {
+                                queued++
+                                watchDocumentJob(queuedResult.data, attachment.displayName)
+                            }
                             else -> failed++
                         }
                     }
@@ -329,6 +333,57 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * Polls the authenticated job endpoint with a bounded lifetime. A completed
+     * extraction is added to this same conversation as an assistant result.
+     */
+    private fun watchDocumentJob(jobId: String, displayName: String) {
+        viewModelScope.launch {
+            repeat(DOCUMENT_JOB_POLL_ATTEMPTS) {
+                delay(DOCUMENT_JOB_POLL_INTERVAL_MS)
+                when (val result = cloudChatStore.getDocumentJobStatus(jobId)) {
+                    is NetworkResult.Success -> {
+                        val job = result.data
+                        when (job.status.lowercase()) {
+                            "succeeded" -> {
+                                val extracted = job.extractedText
+                                if (!extracted.isNullOrBlank()) {
+                                    messages.add(
+                                        ChatMessage(
+                                            id = UUID.randomUUID().toString(),
+                                            text = "Extracted text from $displayName:\\n\\n" +
+                                                extracted.take(MAX_DOCUMENT_TEXT_IN_CHAT) +
+                                                if (extracted.length > MAX_DOCUMENT_TEXT_IN_CHAT) {
+                                                    "\\n\\n[The displayed text was shortened. The secure extraction result remains stored on the server.]"
+                                                } else "",
+                                            role = ChatRole.ASSISTANT,
+                                            deliveryState = DeliveryState.SENT
+                                        )
+                                    )
+                                    persistMessages()
+                                    _serviceMessage.value = "Document extraction completed."
+                                } else {
+                                    _serviceMessage.value = "Document processing finished, but no readable text was returned for $displayName."
+                                }
+                                return@launch
+                            }
+                            "failed", "cancelled", "dead" -> {
+                                _serviceMessage.value = "Document processing failed for $displayName (${job.errorCode ?: "WORKER_FAILED"})."
+                                return@launch
+                            }
+                            // queued, running, retrying: continue within the bounded window.
+                        }
+                    }
+                    NetworkResult.AuthenticationRequired -> {
+                        _serviceMessage.value = "Sign in again to check the private document-processing result."
+                        return@launch
+                    }
+                    else -> Unit // transient network failures are retried on the next interval.
+                }
+            }
+            _serviceMessage.value = "Document $displayName is still processing. Its private job remains queued; check again later."
+        }
+    }
     fun cancelCurrentRequest() {
         if (!isSending) return
         _serviceMessage.value = "Generation stopped. The unfinished message remains saved on this device."
@@ -349,5 +404,11 @@ class ChatViewModel(
 
     private fun persistMessages() {
         chatRepository.saveMessages(messages.toList())
+    }
+
+    private companion object {
+        const val DOCUMENT_JOB_POLL_ATTEMPTS = 30
+        const val DOCUMENT_JOB_POLL_INTERVAL_MS = 2_000L
+        const val MAX_DOCUMENT_TEXT_IN_CHAT = 30_000
     }
 }
