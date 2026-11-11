@@ -19,6 +19,9 @@ dependencies = [
   "pypdf>=5.0,<7.0",
 ]
 
+[project.scripts]
+zayron-document-worker = "app.workers.document_worker:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=9.0.3,<10", "pytest-asyncio>=1.3,<2"]
 
