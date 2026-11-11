@@ -63,7 +63,7 @@ def validate_document_job(job: dict[str, Any]) -> dict[str, Any]:
         raise DocumentJobError("ATTACHMENT_METADATA_INVALID")
     if size_bytes < 1 or size_bytes > MAX_ATTACHMENT_BYTES:
         raise DocumentJobError("ATTACHMENT_TOO_LARGE")
-    expected = rf"{re.escape(owner_id)}/[0-9a-f]{{32}}\\.{extension}"
+    expected = rf"{re.escape(owner_id)}/[0-9a-f]{{32}}\.{extension}"
     if not isinstance(storage_path, str) or not re.fullmatch(
         expected, storage_path, flags=re.IGNORECASE
     ):
