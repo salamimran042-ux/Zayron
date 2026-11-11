@@ -6,7 +6,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.dependencies import get_current_user
 from app.auth.token_verifier import AuthenticatedUser
@@ -21,6 +21,8 @@ TEXT_MIME_TYPES = {
 
 
 class DocumentJobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     conversation_id: UUID
     message_id: UUID
     attachment_id: UUID
