@@ -10,9 +10,13 @@ Supply values through protected environment variables or a secret manager. Never
 - `ZAYRON_DATABASE_URL`: PostgreSQL connection string for the restricted `zayron_runtime` login. This is the only database URL the running API needs.
 - `ZAYRON_MIGRATION_DATABASE_URL`: privileged PostgreSQL connection string used only for the one-off migration command. Do not put it in the API service's runtime environment.
 - `ZAYRON_WORKER_TOKEN`: long random secret used only by trusted job workers; keep it in a server-side secret manager.
+- `ZAYRON_WORKER_API_URL`: HTTPS origin of the deployed Zayron API, configured only on the background worker.
+- `ZAYRON_WORKER_ID`: stable worker identifier (defaults to `zayron-document-worker`).
+- `ZAYRON_WORKER_POLL_SECONDS`: idle queue polling interval (defaults to 5 seconds).
+- `ZAYRON_WORKER_LEASE_SECONDS`: job lease duration from 30 to 900 seconds (defaults to 180).
 - `ZAYRON_SUPABASE_URL`: clean HTTPS Supabase project origin.
 - `ZAYRON_SUPABASE_PUBLISHABLE_KEY`: current Supabase publishable API key used by the server-side Auth adapter.
-- `ZAYRON_SUPABASE_SECRET_KEY`: optional server-only Supabase secret key for future narrowly scoped administrative operations. It is not required for the current Auth flows and must never be sent to Android.
+- `ZAYRON_SUPABASE_SECRET_KEY`: server-only Supabase secret key used by the isolated document worker to retrieve one already-authorized private object. It bypasses RLS, so the worker verifies the job lease, original user message, owner UUID path, MIME type and size before making the exact-object request. It must never be sent to Android.
 - `ZAYRON_SUPABASE_ANON_KEY` and `ZAYRON_SUPABASE_SERVICE_ROLE_KEY`: legacy compatibility variables only. Prefer the current publishable/secret key names for new projects.
 
 The Auth adapter sends the publishable key in the Supabase `apikey` header. It does not use the secret key for login, registration, refresh, or logout. Configuration status reveals presence only, never secret values. Do not put any Supabase secret key, database password, or worker token in the Android app or public repository.
@@ -98,3 +102,22 @@ These routes are implemented in source and tested with mocked provider responses
 - The endpoint creates an idempotent `document_ingest` job in the existing `ai_jobs` queue. Its payload contains the verified attachment reference and bounded extraction limits, not the file bytes or extracted text.
 - Repeating the same request returns the existing job rather than creating duplicate work. Unsupported image attachments are rejected from this text-extraction job path.
 - This is queue orchestration only. A deployed worker handler must still download the private object, call the bounded extraction routine, persist a safe result, and connect to a deliberately configured model adapter before an AI answer can be produced. No model call or document answer is claimed by this endpoint.
+
+## Secure document worker
+
+Run the document worker as a separate background process, not inside the Android app or the API web process:
+
+```bash
+cd backend
+python -m app.workers.document_worker
+```
+
+Configure the worker with ZAYRON_WORKER_API_URL, ZAYRON_WORKER_TOKEN, ZAYRON_WORKER_ID, ZAYRON_SUPABASE_URL, and ZAYRON_SUPABASE_SECRET_KEY in the hosting provider's protected environment. Do not add these secrets to GitHub source, Android resources, APK build arguments, or logs. The worker process claims only document_ingest jobs.
+
+Before retrieving a file, the worker asks the API to re-check the active lease and compare the queued attachment reference against the original user message under that user's RLS context. The worker then downloads only that exact path from the private zayron-attachments bucket using the server-only Supabase secret key in the apikey header. It does not list the bucket, create a public URL, or accept a client-supplied path. The downloaded MIME type and byte count must match the stored message metadata.
+
+Extraction supports text-layer PDFs (maximum 100 pages), plain text, Markdown, CSV and JSON, with a 10 MiB input cap and a 100,000-character extraction cap. Encrypted PDFs, malformed documents, unsupported types, mismatched metadata and oversized results fail with bounded machine-readable error codes. Scanned PDF OCR and image understanding remain unsupported until a dedicated OCR/vision adapter is added.
+
+On success, the worker writes a bounded extraction result to the same leased ai_jobs.result_payload record. Completion is conditional on the worker still owning an unexpired lease; a stale worker cannot overwrite a newer attempt. Job lifecycle events record state and safe metadata, never file bytes or extracted text. The authenticated owner can poll GET /api/v1/documents/jobs/{job_id} to read status and the completed result; RLS and the user-scoped API transaction prevent cross-account reads.
+
+This worker is implemented and covered by mocked storage/API tests. It is not live until a separate background worker service is deployed and its protected environment is configured. Do not place the Supabase secret key or worker token in the API's Android-facing configuration.
