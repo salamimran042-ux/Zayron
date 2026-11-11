@@ -119,7 +119,16 @@ async def download_private_attachment(
         signed_path = signed_payload.get("signedURL") or signed_payload.get("signedUrl")
         if not isinstance(signed_path, str) or not signed_path:
             raise DocumentJobError("ATTACHMENT_SIGNING_REJECTED")
-        download_url = urljoin(base_url, signed_path.lstrip("/") if signed_path.startswith("/") else signed_path)
+        if signed_path.startswith("https://"):
+            download_url = signed_path
+        elif signed_path.startswith("/storage/v1/"):
+            download_url = urljoin(base_url, signed_path.lstrip("/"))
+        elif signed_path.startswith("/object/sign/"):
+            download_url = urljoin(base_url, "storage/v1" + signed_path)
+        elif signed_path.startswith("object/sign/"):
+            download_url = urljoin(base_url, "storage/v1/" + signed_path)
+        else:
+            raise DocumentJobError("ATTACHMENT_SIGNING_REJECTED")
         base_parts = urlparse(base_url)
         download_parts = urlparse(download_url)
         if (
