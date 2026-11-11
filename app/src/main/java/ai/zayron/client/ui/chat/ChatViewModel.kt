@@ -193,7 +193,10 @@ class ChatViewModel(
                 NetworkResult.ConnectionError
             }
             var documentQueueNotice: String? = null
-            val savedReceipt = (cloudSaveResult as? NetworkResult.Success)?.data
+            val savedReceipt = when (cloudSaveResult) {
+                is NetworkResult.Success -> cloudSaveResult.data
+                else -> null
+            }
             if (savedReceipt != null) {
                 val documentAttachments = attachments.filter {
                     it.mimeType in setOf(
