@@ -97,7 +97,7 @@ class BackendCloudChatStore(
         if (conversationId == null) {
             when (val created = createConversation(token)) {
                 is NetworkResult.Success -> conversationId = created.data
-                else -> return@withLock created.asUnitResult()
+                else -> return@withLock created.asReceiptResult()
             }
         }
 
@@ -109,7 +109,7 @@ class BackendCloudChatStore(
                     conversationId = created.data
                     result = postMessage(token, conversationId!!, content, attachments)
                 }
-                else -> return@withLock created.asUnitResult()
+                else -> return@withLock created.asReceiptResult()
             }
         }
         result
@@ -221,6 +221,16 @@ class BackendCloudChatStore(
             .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
         return requestExecutor(request)
+    }
+
+    private fun NetworkResult<String>.asReceiptResult(): NetworkResult<CloudMessageReceipt?> = when (this) {
+        is NetworkResult.Success -> NetworkResult.StreamError("INVALID_CLOUD_CONVERSATION_RESPONSE")
+        is NetworkResult.HttpError -> NetworkResult.HttpError(statusCode, responseBody)
+        is NetworkResult.StreamError -> NetworkResult.StreamError(code)
+        NetworkResult.AuthenticationRequired -> NetworkResult.AuthenticationRequired
+        NetworkResult.NotConfigured -> NetworkResult.NotConfigured
+        NetworkResult.RejectedRequest -> NetworkResult.RejectedRequest
+        NetworkResult.ConnectionError -> NetworkResult.ConnectionError
     }
 
     private fun NetworkResult<CloudMessageReceipt?>.asUnitResult(): NetworkResult<Unit> = when (this) {
