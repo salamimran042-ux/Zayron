@@ -14,11 +14,34 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
+data class CloudMessageReceipt(val conversationId: String, val messageId: String)
+
 interface CloudChatStore {
     suspend fun saveUserMessage(
         content: String,
         attachments: List<ChatAttachmentReference> = emptyList()
     ): NetworkResult<Unit>
+
+    /** Returns the server-issued message identity when the store supports it. */
+    suspend fun saveUserMessageWithReceipt(
+        content: String,
+        attachments: List<ChatAttachmentReference> = emptyList()
+    ): NetworkResult<CloudMessageReceipt?> = when (val result = saveUserMessage(content, attachments)) {
+        is NetworkResult.Success -> NetworkResult.Success(null, result.statusCode)
+        is NetworkResult.HttpError -> result
+        is NetworkResult.StreamError -> result
+        NetworkResult.AuthenticationRequired -> NetworkResult.AuthenticationRequired
+        NetworkResult.NotConfigured -> NetworkResult.NotConfigured
+        NetworkResult.RejectedRequest -> NetworkResult.RejectedRequest
+        NetworkResult.ConnectionError -> NetworkResult.ConnectionError
+    }
+
+    /** Queues extraction only for an attachment already saved on this user's message. */
+    suspend fun enqueueDocumentJob(
+        receipt: CloudMessageReceipt,
+        attachmentId: String
+    ): NetworkResult<String> = NetworkResult.NotConfigured
+
     fun startNewConversation()
 }
 
@@ -57,7 +80,12 @@ class BackendCloudChatStore(
     override suspend fun saveUserMessage(
         content: String,
         attachments: List<ChatAttachmentReference>
-    ): NetworkResult<Unit> = mutex.withLock {
+    ): NetworkResult<Unit> = saveUserMessageWithReceipt(content, attachments).asUnitResult()
+
+    override suspend fun saveUserMessageWithReceipt(
+        content: String,
+        attachments: List<ChatAttachmentReference>
+    ): NetworkResult<CloudMessageReceipt?> = mutex.withLock {
         if ((content.isBlank() && attachments.isEmpty()) ||
             content.length > MAX_MESSAGE_LENGTH || attachments.size > MAX_ATTACHMENTS) {
             return@withLock NetworkResult.RejectedRequest
@@ -84,7 +112,41 @@ class BackendCloudChatStore(
                 else -> return@withLock created.asUnitResult()
             }
         }
-        result.asUnitResult()
+        result
+    }
+
+    override suspend fun enqueueDocumentJob(
+        receipt: CloudMessageReceipt,
+        attachmentId: String
+    ): NetworkResult<String> {
+        val token = accessTokenProvider?.getAccessToken()?.takeIf { it.isNotBlank() }
+            ?: return NetworkResult.AuthenticationRequired
+        val url = endpointProvider("api/v1/documents/jobs") ?: return NetworkResult.NotConfigured
+        val body = JSONObject()
+            .put("conversation_id", receipt.conversationId)
+            .put("message_id", receipt.messageId)
+            .put("attachment_id", attachmentId)
+        val request = Request.Builder()
+            .url(url)
+            .header("Accept", "application/json")
+            .header("Authorization", "Bearer $token")
+            .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return when (val result = requestExecutor(request)) {
+            is NetworkResult.Success -> try {
+                val id = JSONObject(result.data).getString("id")
+                UUID.fromString(id)
+                NetworkResult.Success(id, result.statusCode)
+            } catch (_: Exception) {
+                NetworkResult.StreamError("INVALID_DOCUMENT_JOB_RESPONSE")
+            }
+            is NetworkResult.HttpError -> result
+            is NetworkResult.StreamError -> result
+            NetworkResult.AuthenticationRequired -> NetworkResult.AuthenticationRequired
+            NetworkResult.NotConfigured -> NetworkResult.NotConfigured
+            NetworkResult.RejectedRequest -> NetworkResult.RejectedRequest
+            NetworkResult.ConnectionError -> NetworkResult.ConnectionError
+        }
     }
 
     override fun startNewConversation() {
@@ -113,7 +175,7 @@ class BackendCloudChatStore(
         conversationId: String,
         content: String,
         attachments: List<ChatAttachmentReference>
-    ): NetworkResult<String> {
+    ): NetworkResult<CloudMessageReceipt?> {
         val attachmentJson = JSONArray()
         attachments.forEach { item ->
             attachmentJson.put(
@@ -125,7 +187,7 @@ class BackendCloudChatStore(
                     .put("storage_path", item.storagePath)
             )
         }
-        return execute(
+        val result = execute(
             path = "api/v1/cloud/messages",
             token = token,
             body = JSONObject()
@@ -133,6 +195,21 @@ class BackendCloudChatStore(
                 .put("content", content)
                 .put("attachments", attachmentJson)
         )
+        return when (result) {
+            is NetworkResult.Success -> try {
+                val messageId = JSONObject(result.data).getJSONObject("message").getString("id")
+                UUID.fromString(messageId)
+                NetworkResult.Success(CloudMessageReceipt(conversationId, messageId), result.statusCode)
+            } catch (_: Exception) {
+                NetworkResult.StreamError("INVALID_CLOUD_MESSAGE_RESPONSE")
+            }
+            is NetworkResult.HttpError -> result
+            is NetworkResult.StreamError -> result
+            NetworkResult.AuthenticationRequired -> NetworkResult.AuthenticationRequired
+            NetworkResult.NotConfigured -> NetworkResult.NotConfigured
+            NetworkResult.RejectedRequest -> NetworkResult.RejectedRequest
+            NetworkResult.ConnectionError -> NetworkResult.ConnectionError
+        }
     }
 
     private suspend fun execute(path: String, token: String, body: JSONObject): NetworkResult<String> {
@@ -146,7 +223,7 @@ class BackendCloudChatStore(
         return requestExecutor(request)
     }
 
-    private fun NetworkResult<String>.asUnitResult(): NetworkResult<Unit> = when (this) {
+    private fun NetworkResult<CloudMessageReceipt?>.asUnitResult(): NetworkResult<Unit> = when (this) {
         is NetworkResult.Success -> NetworkResult.Success(Unit, statusCode)
         is NetworkResult.HttpError -> NetworkResult.HttpError(statusCode, responseBody)
         is NetworkResult.StreamError -> NetworkResult.StreamError(code)
