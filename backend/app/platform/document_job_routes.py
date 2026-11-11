@@ -6,6 +6,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.dependencies import get_current_user
@@ -162,3 +163,40 @@ async def create_document_job(
         "created_at": row["created_at"],
         "processing": "queued_for_worker",
     }
+
+
+
+@router.get("/jobs/{job_id}")
+async def get_document_job(
+    job_id: UUID,
+    request: Request,
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    """Return only the authenticated owner's document job and completed extraction."""
+    user_id = _identity(user)
+    async with user_connection(_pool(request), user_id) as connection:
+        row = await connection.fetchrow(
+            """SELECT id, status, attempts, max_attempts, error_code,
+                      result_payload, available_at, created_at, finished_at
+               FROM public.ai_jobs
+               WHERE id = $1 AND user_id = $2 AND job_type = 'document_ingest'""",
+            job_id, user_id,
+        )
+    if row is None:
+        raise HTTPException(404, detail={"code": "DOCUMENT_JOB_NOT_FOUND"})
+    status = row["status"]
+    result_payload = _decode_metadata(row["result_payload"]) if status == "succeeded" else None
+    return JSONResponse(
+        content={
+            "id": str(row["id"]),
+            "status": status,
+            "attempts": row["attempts"],
+            "max_attempts": row["max_attempts"],
+            "error_code": row["error_code"],
+            "result": result_payload,
+            "available_at": row["available_at"].isoformat() if row["available_at"] else None,
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "finished_at": row["finished_at"].isoformat() if row["finished_at"] else None,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
