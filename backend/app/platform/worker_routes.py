@@ -30,8 +30,8 @@ class CompleteRequest(BaseModel):
     @field_validator("result_payload")
     @classmethod
     def bound_result_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
-        if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) > 120_000:
-            raise ValueError("result_payload exceeds the 120 KB worker result limit")
+        if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) > 420_000:
+            raise ValueError("result_payload exceeds the 420 KB worker result limit")
         return value
 
 
