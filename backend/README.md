@@ -89,3 +89,12 @@ These routes are implemented in source and tested with mocked provider responses
 - PDF text extraction is bounded to 100 pages and 100,000 characters. Plain text, Markdown, CSV and JSON are decoded as UTF-8. Declared size and MIME type are checked against the retrieved object.
 - Images are deliberately rejected with `VISION_PROCESSING_NOT_CONFIGURED` until a secure vision/model adapter exists. Scanned PDFs with no text layer are not OCR'd yet.
 - This endpoint prepares document text for a future model request; it does not generate an AI answer, perform RAG, or claim that Zayron understands the attachment.
+
+
+## Document job orchestration
+
+- `POST /api/v1/documents/jobs` queues document preparation for one attachment already recorded in a user's own chat message.
+- The request supplies the conversation, message and attachment IDs only. The API loads the message under the authenticated user's database/RLS context, confirms it is a user message in the owned conversation, selects the matching stored attachment reference, and revalidates its owner-scoped UUID storage path and MIME/extension pairing.
+- The endpoint creates an idempotent `document_ingest` job in the existing `ai_jobs` queue. Its payload contains the verified attachment reference and bounded extraction limits, not the file bytes or extracted text.
+- Repeating the same request returns the existing job rather than creating duplicate work. Unsupported image attachments are rejected from this text-extraction job path.
+- This is queue orchestration only. A deployed worker handler must still download the private object, call the bounded extraction routine, persist a safe result, and connect to a deliberately configured model adapter before an AI answer can be produced. No model call or document answer is claimed by this endpoint.
