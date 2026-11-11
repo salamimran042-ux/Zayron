@@ -115,7 +115,12 @@ async def download_private_attachment(
             raise StorageUnavailable("storage_temporarily_unavailable")
         if signed_response.status_code not in (200, 201):
             raise DocumentJobError("ATTACHMENT_SIGNING_REJECTED")
-        signed_payload = signed_response.json()
+        try:
+            signed_payload = signed_response.json()
+        except ValueError:
+            raise DocumentJobError("ATTACHMENT_SIGNING_REJECTED") from None
+        if not isinstance(signed_payload, dict):
+            raise DocumentJobError("ATTACHMENT_SIGNING_REJECTED")
         signed_path = signed_payload.get("signedURL") or signed_payload.get("signedUrl")
         if not isinstance(signed_path, str) or not signed_path:
             raise DocumentJobError("ATTACHMENT_SIGNING_REJECTED")
