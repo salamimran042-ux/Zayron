@@ -43,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -91,9 +93,12 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun ZayronLogo(size: Int = 56) {
-    Box(Modifier.size(size.dp).clip(RoundedCornerShape((size / 3).dp)).background(ZayronPurple), Alignment.Center) {
-        Text("Z", color = Color.White, fontWeight = FontWeight.Black, style = MaterialTheme.typography.headlineMedium)
-    }
+    Image(
+        painter = painterResource(R.drawable.zayron_launcher),
+        contentDescription = "Zayron AI logo",
+        modifier = Modifier.size(size.dp).clip(RoundedCornerShape((size / 4).dp)),
+        contentScale = ContentScale.Crop
+    )
 }
 
 @Composable
@@ -119,8 +124,21 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+            Column(
+                modifier = Modifier.fillMaxSize().padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.zayron_splash),
+                    contentDescription = "Zayron AI — Think Beyond Limits",
+                    modifier = Modifier.fillMaxWidth().widthIn(max = 320.dp).aspectRatio(1f),
+                    contentScale = ContentScale.Fit
+                )
+                Spacer(Modifier.height(18.dp))
+                CircularProgressIndicator(color = Color(0xFF16BFFF))
+                Spacer(Modifier.height(12.dp))
+                Text("Preparing your workspace", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         session != null -> Workspace(
@@ -222,10 +240,13 @@ private fun SignIn(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            ZayronLogo(78)
-            Spacer(Modifier.height(16.dp))
-            Text("ZAYRON AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Think Beyond Limits.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Image(
+                painter = painterResource(R.drawable.zayron_splash),
+                contentDescription = "Zayron AI — Think Beyond Limits",
+                modifier = Modifier.fillMaxWidth().widthIn(max = 300.dp).aspectRatio(1f),
+                contentScale = ContentScale.Fit
+            )
+            Spacer(Modifier.height(12.dp))
             Spacer(Modifier.height(32.dp))
             Text(
                 when {
