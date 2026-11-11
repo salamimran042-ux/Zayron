@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Literal
 from uuid import UUID
 
@@ -43,6 +44,18 @@ def _decode_metadata(value: Any) -> dict[str, Any]:
         except json.JSONDecodeError:
             return {}
     return value if isinstance(value, dict) else {}
+
+
+def _attachment_path_is_owned(attachment: StoredAttachment, user_id: UUID) -> bool:
+    extensions = {
+        "application/pdf": "pdf", "text/plain": "txt", "text/markdown": "md",
+        "text/csv": "csv", "application/json": "json",
+    }
+    extension = extensions.get(attachment.mime_type)
+    if extension is None:
+        return False
+    pattern = rf"{re.escape(str(user_id))}/[0-9a-f]{{32}}\.{extension}"
+    return re.fullmatch(pattern, attachment.storage_path, flags=re.IGNORECASE) is not None
 
 
 def _find_attachment(metadata: Any, attachment_id: UUID) -> StoredAttachment | None:
@@ -89,6 +102,8 @@ async def create_document_job(
             raise HTTPException(404, detail={"code": "ATTACHMENT_NOT_FOUND"})
         if attachment.mime_type not in TEXT_MIME_TYPES:
             raise HTTPException(409, detail={"code": "DOCUMENT_TYPE_NOT_SUPPORTED"})
+        if not _attachment_path_is_owned(attachment, user_id):
+            raise HTTPException(404, detail={"code": "ATTACHMENT_NOT_FOUND"})
 
         # The message record is the source of truth: clients cannot submit an
         # arbitrary storage path or substitute another user's attachment.
