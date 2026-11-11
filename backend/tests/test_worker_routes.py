@@ -44,7 +44,7 @@ def test_worker_complete_rejects_oversized_extracted_result():
     with pytest.raises(ValidationError):
         CompleteRequest(
             worker_id="document-worker",
-            result_payload={"extracted_text": "x" * 121_000},
+            result_payload={"extracted_text": "x" * 421_000},
         )
 
 
