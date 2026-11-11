@@ -8,6 +8,7 @@ from app.workers.document_worker import (
     DocumentJobError,
     create_worker_instance_id,
     download_private_attachment,
+    heartbeat_lease_once,
     validate_document_job,
 )
 
@@ -246,3 +247,54 @@ async def test_document_worker_verifies_source_attachment_then_persists_extracti
         f"/internal/v1/jobs/{job['id']}/attachment",
         f"/internal/v1/jobs/{job['id']}/complete",
     ]
+
+
+
+@pytest.mark.asyncio
+async def test_worker_heartbeat_renews_active_lease():
+    seen = {}
+
+    async def handler(request):
+        seen["path"] = request.url.path
+        seen["body"] = __import__("json").loads(request.content)
+        return httpx.Response(200, json={"id": "job", "lease_expires_at": "later"})
+
+    async with httpx.AsyncClient(
+        base_url="https://api.zayron.test",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        lost = __import__("asyncio").Event()
+        renewed = await heartbeat_lease_once(
+            client,
+            job_id="f4f1b2c3-4a5e-6789-abcd-ef0123456789",
+            worker_id="document-worker-unique",
+            lease_seconds=90,
+            lease_lost=lost,
+        )
+
+    assert renewed is True
+    assert lost.is_set() is False
+    assert seen["path"].endswith("/heartbeat")
+    assert seen["body"] == {"worker_id": "document-worker-unique", "lease_seconds": 90}
+
+
+@pytest.mark.asyncio
+async def test_worker_stops_persisting_when_heartbeat_reports_lost_lease():
+    async def handler(request):
+        return httpx.Response(409, json={"detail": {"code": "JOB_LEASE_LOST_OR_CANCELLED"}})
+
+    async with httpx.AsyncClient(
+        base_url="https://api.zayron.test",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        lost = __import__("asyncio").Event()
+        renewed = await heartbeat_lease_once(
+            client,
+            job_id="f4f1b2c3-4a5e-6789-abcd-ef0123456789",
+            worker_id="document-worker-unique",
+            lease_seconds=90,
+            lease_lost=lost,
+        )
+
+    assert renewed is False
+    assert lost.is_set() is True
