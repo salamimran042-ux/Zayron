@@ -89,12 +89,20 @@ def test_worker_rejects_oversized_and_unsupported_files():
 
 
 @pytest.mark.asyncio
-async def test_worker_downloads_only_exact_private_object_with_server_key():
-    seen = {}
+async def test_worker_signs_exact_private_object_then_downloads_without_secret_key():
+    seen = []
 
     async def handler(request):
-        seen["url"] = str(request.url)
-        seen["apikey"] = request.headers.get("apikey")
+        seen.append({
+            "method": request.method,
+            "url": str(request.url),
+            "apikey": request.headers.get("apikey"),
+            "authorization": request.headers.get("authorization"),
+        })
+        if request.method == "POST":
+            assert request.url.path.endswith(f"/object/sign/zayron-attachments/{PATH}")
+            assert request.read() == b'{"expiresIn":300}'
+            return httpx.Response(200, json={"signedURL": f"/object/sign/zayron-attachments/{PATH}?token=short-lived"})
         return httpx.Response(
             200,
             headers={"content-type": "text/plain", "content-length": "5"},
@@ -112,14 +120,38 @@ async def test_worker_downloads_only_exact_private_object_with_server_key():
         )
 
     assert content == b"hello"
-    assert seen["url"].endswith(f"/storage/v1/object/zayron-attachments/{PATH}")
-    assert seen["apikey"] == "sb_secret_test"
-    assert "authorization" not in seen
+    assert len(seen) == 2
+    assert seen[0]["method"] == "POST"
+    assert seen[0]["apikey"] == "sb_secret_test"
+    assert seen[0]["authorization"] is None
+    assert seen[1]["method"] == "GET"
+    assert seen[1]["url"].startswith("https://project.supabase.co/storage/v1/object/sign/")
+    assert seen[1]["apikey"] is None
+    assert seen[1]["authorization"] is None
+
+
+@pytest.mark.asyncio
+async def test_worker_rejects_signed_url_on_untrusted_host():
+    async def handler(request):
+        return httpx.Response(200, json={"signedURL": "https://attacker.invalid/object/sign/private?token=x"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(DocumentJobError, match="ATTACHMENT_SIGNING_REJECTED"):
+            await download_private_attachment(
+                client,
+                supabase_url="https://project.supabase.co",
+                secret_key="sb_secret_test",
+                storage_path=PATH,
+                expected_size=5,
+                mime_type="text/plain",
+            )
 
 
 @pytest.mark.asyncio
 async def test_worker_rejects_storage_content_type_mismatch():
     async def handler(request):
+        if request.method == "POST":
+            return httpx.Response(200, json={"signedURL": f"/object/sign/zayron-attachments/{PATH}?token=x"})
         return httpx.Response(
             200,
             headers={"content-type": "application/pdf"},
