@@ -13,7 +13,7 @@ Supply values through protected environment variables or a secret manager. Never
 - `ZAYRON_WORKER_API_URL`: HTTPS origin of the deployed Zayron API, configured only on the background worker.
 - `ZAYRON_WORKER_ID`: stable worker identifier (defaults to `zayron-document-worker`).
 - `ZAYRON_WORKER_POLL_SECONDS`: idle queue polling interval (defaults to 5 seconds).
-- `ZAYRON_WORKER_LEASE_SECONDS`: job lease duration from 30 to 900 seconds (defaults to 180).
+- `ZAYRON_WORKER_LEASE_SECONDS`: job lease duration from 30 to 900 seconds (defaults to 600).
 - `ZAYRON_SUPABASE_URL`: clean HTTPS Supabase project origin.
 - `ZAYRON_SUPABASE_PUBLISHABLE_KEY`: current Supabase publishable API key used by the server-side Auth adapter.
 - `ZAYRON_SUPABASE_SECRET_KEY`: server-only Supabase secret key used by the isolated document worker to retrieve one already-authorized private object. It bypasses RLS, so the worker verifies the job lease, original user message, owner UUID path, MIME type and size before making the exact-object request. It must never be sent to Android.
@@ -62,7 +62,7 @@ The versioned migrations create the platform's core persistence tables:
 
 The API exposes account-scoped profile, conversation, message, job, entitlement and usage-read endpoints. Job creation is idempotent when an `Idempotency-Key` is supplied. A client can cancel a job only while it remains queued. The server never trusts a client-supplied account ID; ownership comes from the verified JWT subject. PostgreSQL RLS independently enforces the same ownership boundary for every query.
 
-The job API includes a worker control plane: workers authenticate with a separate server-side token, claim jobs using PostgreSQL `FOR UPDATE SKIP LOCKED`, renew leases, and report success or failure. Failures can be rescheduled within the attempt limit. Worker endpoints never accept a user ID from the client. The worker execution process and actual tool handlers are still separate work; no AI provider or file storage is connected. Usage events and entitlement grants are server-owned and cannot be written through client routes.
+The job API includes a worker control plane: workers authenticate with a separate server-side token, claim jobs using PostgreSQL `FOR UPDATE SKIP LOCKED`, renew leases, and report success or failure. Failures can be rescheduled within the attempt limit. Worker endpoints never accept a user ID from the client. The document worker implementation is described below; it is not live until separately deployed and configured. No AI provider is connected. Usage events and entitlement grants are server-owned and cannot be written through client routes.
 
 ## Authenticated chat boundary
 
@@ -101,7 +101,7 @@ These routes are implemented in source and tested with mocked provider responses
 - The request supplies the conversation, message and attachment IDs only. The API loads the message under the authenticated user's database/RLS context, confirms it is a user message in the owned conversation, selects the matching stored attachment reference, and revalidates its owner-scoped UUID storage path and MIME/extension pairing.
 - The endpoint creates an idempotent `document_ingest` job in the existing `ai_jobs` queue. Its payload contains the verified attachment reference and bounded extraction limits, not the file bytes or extracted text.
 - Repeating the same request returns the existing job rather than creating duplicate work. Unsupported image attachments are rejected from this text-extraction job path.
-- This is queue orchestration only. A deployed worker handler must still download the private object, call the bounded extraction routine, persist a safe result, and connect to a deliberately configured model adapter before an AI answer can be produced. No model call or document answer is claimed by this endpoint.
+- This endpoint is queue orchestration. The secure worker implementation below downloads the exact private object, performs bounded text extraction, and persists the result to the owner-scoped job record. No model call, OCR, RAG, or document answer is claimed.
 
 ## Secure document worker
 
