@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 from app.core.config import get_settings
 from app.db.pool import worker_connection
@@ -20,11 +20,19 @@ bearer = HTTPBearer(auto_error=False)
 class ClaimRequest(BaseModel):
     worker_id: str = Field(min_length=3, max_length=100, pattern="^[a-zA-Z0-9._-]+$")
     lease_seconds: int = Field(default=180, ge=30, le=900)
+    job_types: list[str] | None = Field(default=None, max_length=10)
 
 
 class CompleteRequest(BaseModel):
     worker_id: str = Field(min_length=3, max_length=100, pattern="^[a-zA-Z0-9._-]+$")
     result_payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("result_payload")
+    @classmethod
+    def bound_result_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) > 120_000:
+            raise ValueError("result_payload exceeds the 120 KB worker result limit")
+        return value
 
 
 class FailRequest(BaseModel):
@@ -83,6 +91,7 @@ async def claim_job(body: ClaimRequest, request: Request,
                    OR (status = 'running' AND lease_expires_at <= now()
                        AND attempts < max_attempts)
                  )
+                 AND ($3::text[] IS NULL OR job_type = ANY($3::text[]))
                  ORDER BY available_at, created_at
                  FOR UPDATE SKIP LOCKED LIMIT 1
                )
@@ -94,7 +103,7 @@ async def claim_job(body: ClaimRequest, request: Request,
                FROM candidate WHERE job.id = candidate.id
                RETURNING job.id, job.user_id, job.job_type, job.input_payload,
                          job.attempts, job.max_attempts, job.lease_expires_at""",
-            body.worker_id, body.lease_seconds
+            body.worker_id, body.lease_seconds, body.job_types
         )
         if row is None:
             return {"job": None}
