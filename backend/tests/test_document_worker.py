@@ -6,6 +6,7 @@ import pytest
 from app.core.config import Settings
 from app.workers.document_worker import (
     DocumentJobError,
+    create_worker_instance_id,
     download_private_attachment,
     validate_document_job,
 )
@@ -32,6 +33,14 @@ def valid_job(**overrides):
     }
     job.update(overrides)
     return job
+
+
+def test_worker_process_instances_get_unique_lease_ids():
+    first = create_worker_instance_id("document-worker")
+    second = create_worker_instance_id("document-worker")
+    assert first.startswith("document-worker-")
+    assert second.startswith("document-worker-")
+    assert first != second
 
 
 def test_worker_validates_document_job_owner_and_exact_object_path():
