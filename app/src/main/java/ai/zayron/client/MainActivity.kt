@@ -129,12 +129,12 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Image(
-                    painter = painterResource(R.drawable.zayron_splash),
-                    contentDescription = "Zayron AI — Think Beyond Limits",
-                    modifier = Modifier.fillMaxWidth().widthIn(max = 320.dp).aspectRatio(1f),
-                    contentScale = ContentScale.Fit
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    ZayronLogo(112)
+                    Spacer(Modifier.height(14.dp))
+                    Text("ZAYRON AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+                    Text("Think Beyond Limits.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Spacer(Modifier.height(18.dp))
                 CircularProgressIndicator(color = Color(0xFF16BFFF))
                 Spacer(Modifier.height(12.dp))
@@ -240,13 +240,13 @@ private fun SignIn(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Image(
-                painter = painterResource(R.drawable.zayron_splash),
-                contentDescription = "Zayron AI — Think Beyond Limits",
-                modifier = Modifier.fillMaxWidth().widthIn(max = 300.dp).aspectRatio(1f),
-                contentScale = ContentScale.Fit
-            )
-            Spacer(Modifier.height(12.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                ZayronLogo(104)
+                Spacer(Modifier.height(10.dp))
+                Text("ZAYRON AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+                Text("Think Beyond Limits.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(16.dp))
             Spacer(Modifier.height(32.dp))
             Text(
                 when {
