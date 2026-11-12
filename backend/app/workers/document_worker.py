@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import signal
 from typing import Any
 from urllib.parse import quote, urljoin, urlparse
 from uuid import UUID, uuid4
@@ -368,7 +369,11 @@ async def run_once(
     return True
 
 
-async def run_forever(settings: Settings) -> None:
+async def run_forever(
+    settings: Settings,
+    *,
+    stop_event: asyncio.Event | None = None,
+) -> None:
     if not settings.worker_api_url or not settings.worker_api_url.startswith("https://"):
         raise SystemExit("ZAYRON_WORKER_API_URL must be configured with an HTTPS API URL.")
     if not settings.worker_token or not settings.worker_token.get_secret_value():
@@ -378,21 +383,43 @@ async def run_forever(settings: Settings) -> None:
     if not settings.supabase_url:
         raise SystemExit("ZAYRON_SUPABASE_URL is not configured.")
 
+    stop_event = stop_event or asyncio.Event()
+    loop = asyncio.get_running_loop()
+    installed_signals: list[signal.Signals] = []
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(signum, stop_event.set)
+            installed_signals.append(signum)
+        except (NotImplementedError, RuntimeError, ValueError):
+            # Signal handlers are unavailable on some test hosts and event loops.
+            continue
+
     # A stale replica must not share the lease identity of a process that reclaimed its job.
     settings = settings.model_copy(update={"worker_id": create_worker_instance_id(settings.worker_id)})
     api_headers = {"Authorization": f"Bearer {settings.worker_token.get_secret_value()}"}
-    async with (
-        httpx.AsyncClient(
-            base_url=settings.worker_api_url.rstrip("/"),
-            headers=api_headers,
-            timeout=STORAGE_TIMEOUT,
-        ) as api_client,
-        httpx.AsyncClient(timeout=STORAGE_TIMEOUT, follow_redirects=False) as storage_client,
-    ):
-        while True:
-            found_job = await run_once(api_client, storage_client, settings)
-            if not found_job:
-                await asyncio.sleep(settings.worker_poll_seconds)
+    try:
+        async with (
+            httpx.AsyncClient(
+                base_url=settings.worker_api_url.rstrip("/"),
+                headers=api_headers,
+                timeout=STORAGE_TIMEOUT,
+            ) as api_client,
+            httpx.AsyncClient(timeout=STORAGE_TIMEOUT, follow_redirects=False) as storage_client,
+        ):
+            while not stop_event.is_set():
+                # run_once is allowed to finish its current leased job. A shutdown
+                # signal is checked before the next claim, so no new work is taken.
+                found_job = await run_once(api_client, storage_client, settings)
+                if not found_job and not stop_event.is_set():
+                    try:
+                        await asyncio.wait_for(
+                            stop_event.wait(), timeout=settings.worker_poll_seconds
+                        )
+                    except TimeoutError:
+                        pass
+    finally:
+        for signum in installed_signals:
+            loop.remove_signal_handler(signum)
 
 
 def main() -> None:

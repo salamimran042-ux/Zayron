@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID
 
 import httpx
@@ -316,3 +317,56 @@ async def test_worker_rejects_malformed_signed_url_response_safely():
                 expected_size=5,
                 mime_type="text/plain",
             )
+
+
+
+@pytest.mark.asyncio
+async def test_worker_shutdown_event_stops_before_another_job_claim(monkeypatch):
+    from app.workers import document_worker
+
+    settings = Settings(
+        worker_api_url="https://api.zayron.test",
+        worker_token="worker-secret",
+        supabase_url="https://project.supabase.co",
+        supabase_secret_key="sb_secret_test",
+        worker_poll_seconds=30,
+        _env_file=None,
+    )
+    stop_event = asyncio.Event()
+    calls = 0
+
+    async def fake_run_once(api_client, storage_client, runtime_settings):
+        nonlocal calls
+        calls += 1
+        stop_event.set()
+        return False
+
+    monkeypatch.setattr(document_worker, "run_once", fake_run_once)
+    await document_worker.run_forever(settings, stop_event=stop_event)
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_finishes_current_job_before_shutdown(monkeypatch):
+    from app.workers import document_worker
+
+    settings = Settings(
+        worker_api_url="https://api.zayron.test",
+        worker_token="worker-secret",
+        supabase_url="https://project.supabase.co",
+        supabase_secret_key="sb_secret_test",
+        _env_file=None,
+    )
+    stop_event = asyncio.Event()
+    completed_current_job = False
+
+    async def fake_run_once(api_client, storage_client, runtime_settings):
+        nonlocal completed_current_job
+        await asyncio.sleep(0)
+        completed_current_job = True
+        stop_event.set()
+        return True
+
+    monkeypatch.setattr(document_worker, "run_once", fake_run_once)
+    await document_worker.run_forever(settings, stop_event=stop_event)
+    assert completed_current_job is True
