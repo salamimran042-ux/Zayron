@@ -100,3 +100,37 @@ def test_auth_client_falls_back_to_legacy_anon_key() -> None:
     assert client is not None
     assert client._client.headers["apikey"] == "legacy_anon_key"
     asyncio.run(client.close())
+
+
+
+def test_worker_integration_status_requires_all_runtime_dependencies() -> None:
+    partial = Settings(worker_token="worker-secret", _env_file=None)
+    assert partial.integration_status()["worker"] == "not_configured"
+
+    complete = Settings(
+        worker_token="worker-secret",
+        worker_api_url="https://api.example.com",
+        supabase_url="https://project.supabase.co",
+        supabase_secret_key="sb_secret_test",
+        _env_file=None,
+    )
+    assert complete.integration_status()["worker"] == "configured"
+
+
+def test_worker_integration_status_rejects_insecure_or_empty_configuration() -> None:
+    insecure = Settings(
+        worker_token="worker-secret",
+        worker_api_url="http://api.example.com",
+        supabase_url="https://project.supabase.co",
+        supabase_secret_key="sb_secret_test",
+        _env_file=None,
+    )
+    empty_secret = Settings(
+        worker_token="",
+        worker_api_url="https://api.example.com",
+        supabase_url="https://project.supabase.co",
+        supabase_secret_key="",
+        _env_file=None,
+    )
+    assert insecure.integration_status()["worker"] == "not_configured"
+    assert empty_secret.integration_status()["worker"] == "not_configured"

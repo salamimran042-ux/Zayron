@@ -55,6 +55,16 @@ class Settings(BaseSettings):
         ai_configured = bool(
             self.ai_provider_base_url and self.ai_provider_api_key and self.ai_provider_model
         )
+        worker_secret = self.worker_token.get_secret_value() if self.worker_token else ""
+        worker_configured = bool(
+            worker_secret
+            and self.worker_api_url
+            and self.worker_api_url.startswith("https://")
+            and self.supabase_url
+            and self.supabase_url.startswith("https://")
+            and secret_configured
+            and self.effective_supabase_secret_key.get_secret_value()
+        )
         return {
             "database": "configured" if self.database_url else "not_configured",
             "migration_database": "configured" if self.migration_database_url else "not_configured",
@@ -64,7 +74,7 @@ class Settings(BaseSettings):
             "supabase_anon_key_legacy": "configured" if self.supabase_anon_key else "not_configured",
             "supabase_service_role_key_legacy": "configured" if self.supabase_service_role_key else "not_configured",
             "supabase_jwt_verification": "configured" if self.supabase_url else "not_configured",
-            "worker": "configured" if self.worker_token else "not_configured",
+            "worker": "configured" if worker_configured else "not_configured",
             "ai_provider": "configured" if ai_configured else "not_configured",
         }
 
