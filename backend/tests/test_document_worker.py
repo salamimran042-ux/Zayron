@@ -370,3 +370,142 @@ async def test_worker_finishes_current_job_before_shutdown(monkeypatch):
     monkeypatch.setattr(document_worker, "run_once", fake_run_once)
     await document_worker.run_forever(settings, stop_event=stop_event)
     assert completed_current_job is True
+
+
+@pytest.mark.asyncio
+async def test_run_once_claims_verifies_downloads_extracts_and_completes_document():
+    from app.workers.document_worker import run_once
+
+    job = valid_job()
+    calls = []
+
+    async def api_handler(request):
+        calls.append(request.url.path)
+        if request.url.path.endswith("/claim"):
+            return httpx.Response(200, json={"job": job})
+        if request.url.path.endswith("/attachment"):
+            body = __import__("json").loads(request.content)
+            assert body["worker_id"] == "document-worker"
+            return httpx.Response(
+                200,
+                json={
+                    "attachment": {
+                        "id": ATTACHMENT,
+                        "display_name": "notes.txt",
+                        "mime_type": "text/plain",
+                        "size_bytes": 5,
+                        "storage_path": PATH,
+                    }
+                },
+            )
+        if request.url.path.endswith("/complete"):
+            body = __import__("json").loads(request.content)
+            assert body["worker_id"] == "document-worker"
+            assert body["result_payload"]["extracted_text"] == "hello"
+            return httpx.Response(200, json={"status": "succeeded"})
+        raise AssertionError(f"Unexpected API path: {request.url.path}")
+
+    async def storage_handler(request):
+        if request.method == "POST":
+            assert request.headers["apikey"] == "sb_secret_test"
+            return httpx.Response(
+                200,
+                json={"signedURL": f"/object/sign/zayron-attachments/{PATH}?token=short-lived"},
+            )
+        assert request.headers.get("apikey") is None
+        assert request.headers.get("authorization") is None
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/plain", "content-length": "5"},
+            content=b"hello",
+        )
+
+    settings = Settings(
+        worker_id="document-worker",
+        worker_lease_seconds=90,
+        supabase_url="https://project.supabase.co",
+        supabase_secret_key="sb_secret_test",
+        _env_file=None,
+    )
+    async with (
+        httpx.AsyncClient(
+            base_url="https://api.zayron.test",
+            transport=httpx.MockTransport(api_handler),
+        ) as api_client,
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(storage_handler),
+        ) as storage_client,
+    ):
+        found = await run_once(api_client, storage_client, settings)
+
+    assert found is True
+    assert calls == [
+        "/internal/v1/jobs/claim",
+        f"/internal/v1/jobs/{job['id']}/attachment",
+        f"/internal/v1/jobs/{job['id']}/complete",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_worker_records_permanent_extraction_failure_without_completing_job():
+    from app.workers.document_worker import process_document_job
+
+    calls = []
+
+    async def api_handler(request):
+        calls.append(request.url.path)
+        if request.url.path.endswith("/attachment"):
+            return httpx.Response(
+                200,
+                json={
+                    "attachment": {
+                        "id": ATTACHMENT,
+                        "display_name": "broken.txt",
+                        "mime_type": "text/plain",
+                        "size_bytes": 1,
+                        "storage_path": PATH,
+                    }
+                },
+            )
+        if request.url.path.endswith("/fail"):
+            body = __import__("json").loads(request.content)
+            assert body["error_code"] == "ATTACHMENT_TEXT_ENCODING_UNSUPPORTED"
+            assert body["retry_after_seconds"] == 0
+            return httpx.Response(200, json={"status": "failed"})
+        raise AssertionError(f"Unexpected API path: {request.url.path}")
+
+    async def storage_handler(request):
+        if request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"signedURL": f"/object/sign/zayron-attachments/{PATH}?token=short-lived"},
+            )
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/plain", "content-length": "1"},
+            content=b"\\xff",
+        )
+
+    settings = Settings(
+        worker_id="document-worker",
+        supabase_url="https://project.supabase.co",
+        supabase_secret_key="sb_secret_test",
+        _env_file=None,
+    )
+    job = valid_job()
+    job["input_payload"]["attachment"]["size_bytes"] = 1
+    async with (
+        httpx.AsyncClient(
+            base_url="https://api.zayron.test",
+            transport=httpx.MockTransport(api_handler),
+        ) as api_client,
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(storage_handler),
+        ) as storage_client,
+    ):
+        await process_document_job(api_client, storage_client, settings, job)
+
+    assert calls == [
+        f"/internal/v1/jobs/{job['id']}/attachment",
+        f"/internal/v1/jobs/{job['id']}/fail",
+    ]
