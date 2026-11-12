@@ -483,7 +483,7 @@ async def test_worker_records_permanent_extraction_failure_without_completing_jo
         return httpx.Response(
             200,
             headers={"content-type": "text/plain", "content-length": "1"},
-            content=b"\\xff",
+            content=bytes([255]),
         )
 
     settings = Settings(
