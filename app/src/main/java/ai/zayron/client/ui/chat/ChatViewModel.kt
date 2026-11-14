@@ -1,6 +1,7 @@
 package ai.zayron.client.ui.chat
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
@@ -8,6 +9,10 @@ import androidx.lifecycle.viewModelScope
 import ai.zayron.client.data.auth.AndroidKeystoreSessionStore
 import ai.zayron.client.data.auth.SecureChatAccessTokenProvider
 import ai.zayron.client.data.chat.ChatRemoteDataSource
+import ai.zayron.client.data.chat.AttachmentUploadClient
+import ai.zayron.client.data.chat.CloudChatStore
+import ai.zayron.client.data.chat.BackendCloudChatStore
+import ai.zayron.client.data.chat.SharedPreferencesCloudConversationIdStore
 import ai.zayron.client.data.chat.ChatStreamEvent
 import ai.zayron.client.data.chat.ChatStreamRequest
 import ai.zayron.client.data.chat.chatMessagesForRemoteRequest
@@ -17,8 +22,10 @@ import ai.zayron.client.data.chat.ChatRepository
 import ai.zayron.client.data.network.ApiErrorMapper
 import ai.zayron.client.data.network.NetworkResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.util.UUID
 
 /**
@@ -34,10 +41,32 @@ class ChatViewModel(
         accessTokenProvider = SecureChatAccessTokenProvider(
             AndroidKeystoreSessionStore(application)
         )
+    ),
+    private val cloudChatStore: CloudChatStore = BackendCloudChatStore(
+        accessTokenProvider = SecureChatAccessTokenProvider(
+            AndroidKeystoreSessionStore(application)
+        ),
+        conversationIds = SharedPreferencesCloudConversationIdStore(application)
+    ),
+    private val attachmentUploadClient: AttachmentUploadClient = AttachmentUploadClient(
+        application.contentResolver,
+        SecureChatAccessTokenProvider(AndroidKeystoreSessionStore(application))
     )
 ) : AndroidViewModel(application) {
 
     val messages = mutableStateListOf<ChatMessage>()
+    data class PendingAttachment(
+        val localId: String,
+        val displayName: String,
+        val mimeType: String,
+        val sizeBytes: Long?,
+        val progress: Float = 0f,
+        val uploaded: ChatAttachmentReference? = null,
+        val isUploading: Boolean = true,
+        val error: String? = null
+    )
+    val pendingAttachments = mutableStateListOf<PendingAttachment>()
+    private val attachmentUris = mutableMapOf<String, Uri>()
     private val _serviceMessage = mutableStateOf<String?>(null)
     val serviceMessage: String? get() = _serviceMessage.value
     private val _isSending = mutableStateOf(false)
@@ -59,15 +88,89 @@ class ChatViewModel(
         if (normalized != restored) chatRepository.saveMessages(normalized)
     }
 
-    fun sendMessage(rawText: String) {
+    fun addAttachments(uris: List<Uri>) {
+        uris.distinct().take((5 - pendingAttachments.size).coerceAtLeast(0)).forEach { uri ->
+            val descriptor = attachmentUploadClient.describe(uri)
+            if (descriptor == null) {
+                _serviceMessage.value = "That file type is unsupported, unavailable, or larger than 10 MB."
+                return@forEach
+            }
+            val localId = UUID.randomUUID().toString()
+            pendingAttachments.add(
+                PendingAttachment(localId, descriptor.displayName, descriptor.mimeType, descriptor.sizeBytes)
+            )
+            uploadPendingAttachment(localId, uri)
+        }
+    }
+
+    fun retryAttachment(localId: String) {
+        val item = pendingAttachments.firstOrNull { it.localId == localId } ?: return
+        if (item.isUploading || item.uploaded != null) return
+        val uri = attachmentUris[localId] ?: return
+        updatePending(localId) { it.copy(isUploading = true, progress = 0f, error = null) }
+        uploadPendingAttachment(localId, uri)
+    }
+
+    fun removeAttachment(localId: String) {
+        pendingAttachments.removeAll { it.localId == localId }
+        attachmentUris.remove(localId)
+    }
+
+    fun clearPendingAttachments() {
+        pendingAttachments.clear()
+        attachmentUris.clear()
+    }
+
+    private fun uploadPendingAttachment(localId: String, uri: Uri) {
+        attachmentUris[localId] = uri
+        viewModelScope.launch {
+            when (val result = attachmentUploadClient.upload(uri) { progress ->
+                viewModelScope.launch(Dispatchers.Main.immediate) {
+                    updatePending(localId) { it.copy(progress = progress) }
+                }
+            }) {
+                is NetworkResult.Success -> {
+                    val uploaded = result.data
+                    updatePending(localId) {
+                        it.copy(
+                            progress = 1f,
+                            uploaded = ChatAttachmentReference(
+                                uploaded.id, uploaded.displayName, uploaded.mimeType,
+                                uploaded.sizeBytes, uploaded.storagePath
+                            ),
+                            isUploading = false,
+                            error = null
+                        )
+                    }
+                }
+                else -> updatePending(localId) {
+                    it.copy(
+                        isUploading = false,
+                        error = ApiErrorMapper.userMessage(result) ?: "Upload failed. Please retry."
+                    )
+                }
+            }
+        }
+    }
+
+    private fun updatePending(
+        localId: String,
+        transform: (PendingAttachment) -> PendingAttachment
+    ) {
+        val index = pendingAttachments.indexOfFirst { it.localId == localId }
+        if (index >= 0) pendingAttachments[index] = transform(pendingAttachments[index])
+    }
+
+    fun sendMessage(rawText: String, attachments: List<ChatAttachmentReference> = emptyList()) {
         val cleanText = rawText.trim()
-        if (cleanText.isEmpty() || isSending) return
+        if ((cleanText.isEmpty() && attachments.isEmpty()) || isSending) return
 
         val userMessage = ChatMessage(
             id = UUID.randomUUID().toString(),
             text = cleanText,
             role = ChatRole.USER,
-            deliveryState = DeliveryState.PENDING
+            deliveryState = DeliveryState.PENDING,
+            attachments = attachments
         )
         messages.add(userMessage)
         persistMessages()
@@ -83,6 +186,48 @@ class ChatViewModel(
         sendJob = viewModelScope.launch {
             val assistantId = UUID.randomUUID().toString()
             try {
+            val cloudSaveResult = try {
+                cloudChatStore.saveUserMessageWithReceipt(cleanText, attachments)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                NetworkResult.ConnectionError
+            }
+            var documentQueueNotice: String? = null
+            val savedReceipt = when (cloudSaveResult) {
+                is NetworkResult.Success -> cloudSaveResult.data
+                else -> null
+            }
+            if (savedReceipt != null) {
+                val documentAttachments = attachments.filter {
+                    it.mimeType in setOf(
+                        "application/pdf", "text/plain", "text/markdown",
+                        "text/csv", "application/json"
+                    )
+                }
+                if (documentAttachments.isNotEmpty()) {
+                    var queued = 0
+                    var failed = 0
+                    for (attachment in documentAttachments) {
+                        when (val queuedResult = cloudChatStore.enqueueDocumentJob(savedReceipt, attachment.id)) {
+                            is NetworkResult.Success -> {
+                                queued++
+                                watchDocumentJob(queuedResult.data, attachment.displayName)
+                            }
+                            else -> failed++
+                        }
+                    }
+                    documentQueueNotice = when {
+                        queued > 0 && failed == 0 ->
+                            "Your document(s) were securely queued for text extraction."
+                        queued > 0 ->
+                            "$queued document(s) queued; $failed could not be queued."
+                        else ->
+                            "Your message was saved, but document extraction could not be queued."
+                    }
+                }
+            }
+
             val events = Channel<ChatStreamEvent>(Channel.UNLIMITED)
             val eventCollector = launch {
                 for (event in events) {
@@ -128,8 +273,9 @@ class ChatViewModel(
             val assistantIndex = messages.indexOfFirst { it.id == assistantId }
             val localOnly = result == NetworkResult.NotConfigured ||
                 result == NetworkResult.AuthenticationRequired
+            val cloudSaved = cloudSaveResult is NetworkResult.Success
             val finalState = when {
-                result is NetworkResult.Success -> DeliveryState.SENT
+                result is NetworkResult.Success || cloudSaved -> DeliveryState.SENT
                 localOnly -> DeliveryState.LOCAL_ONLY
                 else -> DeliveryState.FAILED
             }
@@ -147,7 +293,14 @@ class ChatViewModel(
                 )
             }
 
-            _serviceMessage.value = ApiErrorMapper.userMessage(result)
+            _serviceMessage.value = when {
+                result is NetworkResult.Success && !cloudSaved ->
+                    "Your AI response completed, but cloud chat history could not be saved."
+                result is NetworkResult.Success -> documentQueueNotice
+                cloudSaved ->
+                    "Your message is saved in cloud history, but the AI response service is not connected yet."
+                else -> ApiErrorMapper.userMessage(result)
+            }
             persistMessages()
             } finally {
                 // Cancellation must never leave the composer permanently locked or
@@ -180,6 +333,57 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * Polls the authenticated job endpoint with a bounded lifetime. A completed
+     * extraction is added to this same conversation as an assistant result.
+     */
+    private fun watchDocumentJob(jobId: String, displayName: String) {
+        viewModelScope.launch {
+            repeat(DOCUMENT_JOB_POLL_ATTEMPTS) {
+                delay(DOCUMENT_JOB_POLL_INTERVAL_MS)
+                when (val result = cloudChatStore.getDocumentJobStatus(jobId)) {
+                    is NetworkResult.Success -> {
+                        val job = result.data
+                        when (job.status.lowercase()) {
+                            "succeeded" -> {
+                                val extracted = job.extractedText
+                                if (!extracted.isNullOrBlank()) {
+                                    messages.add(
+                                        ChatMessage(
+                                            id = UUID.randomUUID().toString(),
+                                            text = "Extracted text from $displayName:\\n\\n" +
+                                                extracted.take(MAX_DOCUMENT_TEXT_IN_CHAT) +
+                                                if (extracted.length > MAX_DOCUMENT_TEXT_IN_CHAT) {
+                                                    "\\n\\n[The displayed text was shortened. The secure extraction result remains stored on the server.]"
+                                                } else "",
+                                            role = ChatRole.ASSISTANT,
+                                            deliveryState = DeliveryState.SENT
+                                        )
+                                    )
+                                    persistMessages()
+                                    _serviceMessage.value = "Document extraction completed."
+                                } else {
+                                    _serviceMessage.value = "Document processing finished, but no readable text was returned for $displayName."
+                                }
+                                return@launch
+                            }
+                            "failed", "cancelled", "dead" -> {
+                                _serviceMessage.value = "Document processing failed for $displayName (${job.errorCode ?: "WORKER_FAILED"})."
+                                return@launch
+                            }
+                            // queued, running, retrying: continue within the bounded window.
+                        }
+                    }
+                    NetworkResult.AuthenticationRequired -> {
+                        _serviceMessage.value = "Sign in again to check the private document-processing result."
+                        return@launch
+                    }
+                    else -> Unit // transient network failures are retried on the next interval.
+                }
+            }
+            _serviceMessage.value = "Document $displayName is still processing. Its private job remains queued; check again later."
+        }
+    }
     fun cancelCurrentRequest() {
         if (!isSending) return
         _serviceMessage.value = "Generation stopped. The unfinished message remains saved on this device."
@@ -194,9 +398,17 @@ class ChatViewModel(
         _serviceMessage.value = null
         _isSending.value = false
         chatRepository.clearMessages()
+        cloudChatStore.startNewConversation()
+        clearPendingAttachments()
     }
 
     private fun persistMessages() {
         chatRepository.saveMessages(messages.toList())
+    }
+
+    private companion object {
+        const val DOCUMENT_JOB_POLL_ATTEMPTS = 30
+        const val DOCUMENT_JOB_POLL_INTERVAL_MS = 2_000L
+        const val MAX_DOCUMENT_TEXT_IN_CHAT = 30_000
     }
 }

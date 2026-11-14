@@ -7,10 +7,10 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 from app.core.config import get_settings
-from app.db.pool import worker_connection
+from app.db.pool import user_connection, worker_connection
 from app.platform.routes import _decode_json, _pool, _row
 
 router = APIRouter(prefix="/internal/v1/jobs", tags=["worker-internal"])
@@ -20,11 +20,19 @@ bearer = HTTPBearer(auto_error=False)
 class ClaimRequest(BaseModel):
     worker_id: str = Field(min_length=3, max_length=100, pattern="^[a-zA-Z0-9._-]+$")
     lease_seconds: int = Field(default=180, ge=30, le=900)
+    job_types: list[str] | None = Field(default=None, max_length=10)
 
 
 class CompleteRequest(BaseModel):
     worker_id: str = Field(min_length=3, max_length=100, pattern="^[a-zA-Z0-9._-]+$")
     result_payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("result_payload")
+    @classmethod
+    def bound_result_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) > 420_000:
+            raise ValueError("result_payload exceeds the 420 KB worker result limit")
+        return value
 
 
 class FailRequest(BaseModel):
@@ -83,6 +91,7 @@ async def claim_job(body: ClaimRequest, request: Request,
                    OR (status = 'running' AND lease_expires_at <= now()
                        AND attempts < max_attempts)
                  )
+                 AND ($3::text[] IS NULL OR job_type = ANY($3::text[]))
                  ORDER BY available_at, created_at
                  FOR UPDATE SKIP LOCKED LIMIT 1
                )
@@ -94,7 +103,7 @@ async def claim_job(body: ClaimRequest, request: Request,
                FROM candidate WHERE job.id = candidate.id
                RETURNING job.id, job.user_id, job.job_type, job.input_payload,
                          job.attempts, job.max_attempts, job.lease_expires_at""",
-            body.worker_id, body.lease_seconds
+            body.worker_id, body.lease_seconds, body.job_types
         )
         if row is None:
             return {"job": None}
@@ -104,6 +113,70 @@ async def claim_job(body: ClaimRequest, request: Request,
     result["id"] = str(result["id"])
     result["user_id"] = str(result["user_id"])
     return {"job": result}
+
+
+
+
+@router.post("/{job_id}/attachment")
+async def get_leased_document_attachment(
+    job_id: UUID,
+    body: ClaimRequest,
+    request: Request,
+    _: str = Depends(require_worker),
+):
+    """Return attachment metadata only after re-checking the source user message."""
+    async with worker_connection(_pool(request)) as connection:
+        job = await connection.fetchrow(
+            """SELECT user_id, input_payload FROM public.ai_jobs
+               WHERE id = $1 AND job_type = 'document_ingest'
+                 AND status = 'running' AND lease_owner = $2
+                 AND cancel_requested = false AND lease_expires_at > now()""",
+            job_id, body.worker_id,
+        )
+    if job is None:
+        raise HTTPException(409, detail={"code": "JOB_LEASE_LOST_OR_CANCELLED"})
+
+    payload = _decode_json(job["input_payload"])
+    if not isinstance(payload, dict):
+        raise HTTPException(422, detail={"code": "DOCUMENT_JOB_PAYLOAD_INVALID"})
+    try:
+        owner_id = UUID(str(job["user_id"]))
+        conversation_id = UUID(str(payload["conversation_id"]))
+        message_id = UUID(str(payload["message_id"]))
+        expected_attachment_id = UUID(str(payload["attachment"]["id"]))
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise HTTPException(422, detail={"code": "DOCUMENT_JOB_PAYLOAD_INVALID"}) from None
+
+    async with user_connection(_pool(request), owner_id) as connection:
+        message = await connection.fetchrow(
+            """SELECT m.metadata, m.role
+               FROM public.messages AS m
+               JOIN public.conversations AS c
+                 ON c.id = m.conversation_id AND c.user_id = m.user_id
+               WHERE m.id = $1 AND m.conversation_id = $2
+                 AND m.user_id = $3 AND c.user_id = $3""",
+            message_id, conversation_id, owner_id,
+        )
+    if message is None or message["role"] != "user":
+        raise HTTPException(404, detail={"code": "ATTACHMENT_NOT_FOUND"})
+
+    from app.platform.document_job_routes import _find_attachment
+
+    stored = _find_attachment(message["metadata"], expected_attachment_id)
+    if stored is None:
+        raise HTTPException(404, detail={"code": "ATTACHMENT_NOT_FOUND"})
+    try:
+        queued = payload["attachment"]
+        if (
+            UUID(str(queued["id"])) != stored.id
+            or queued["storage_path"] != stored.storage_path
+            or queued["mime_type"] != stored.mime_type
+            or queued["size_bytes"] != stored.size_bytes
+        ):
+            raise ValueError("attachment metadata changed")
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(409, detail={"code": "ATTACHMENT_METADATA_MISMATCH"}) from None
+    return {"attachment": stored.model_dump(mode="json")}
 
 
 @router.post("/{job_id}/heartbeat")

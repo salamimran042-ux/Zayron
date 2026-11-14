@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -24,6 +25,11 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.VideoLibrary
+import ai.zayron.client.ui.dashboard.DashboardScreen
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.*
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
@@ -37,6 +43,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -49,6 +57,8 @@ import ai.zayron.client.data.auth.AuthResult
 import ai.zayron.client.data.auth.AuthSession
 import ai.zayron.client.data.auth.BackendAuthRepository
 import ai.zayron.client.data.auth.SignInCredentials
+import ai.zayron.client.data.auth.SignUpResult
+import ai.zayron.client.data.chat.SharedPreferencesCloudConversationIdStore
 import ai.zayron.client.ui.chat.ChatScreen
 import ai.zayron.client.ui.settings.SettingsScreen
 import ai.zayron.client.ui.tools.ToolWorkspaceScreen
@@ -84,9 +94,12 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun ZayronLogo(size: Int = 56) {
-    Box(Modifier.size(size.dp).clip(RoundedCornerShape((size / 3).dp)).background(ZayronPurple), Alignment.Center) {
-        Text("Z", color = Color.White, fontWeight = FontWeight.Black, style = MaterialTheme.typography.headlineMedium)
-    }
+    ComposeImage(
+        painter = painterResource(R.drawable.zayron_launcher),
+        contentDescription = "Zayron AI logo",
+        modifier = Modifier.size(size.dp).clip(RoundedCornerShape((size / 4).dp)),
+        contentScale = ContentScale.Crop
+    )
 }
 
 @Composable
@@ -97,7 +110,10 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
     }
     var session by remember { mutableStateOf<AuthSession?>(null) }
     var restoringSession by remember { mutableStateOf(true) }
-    var preview by rememberSaveable { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val cloudConversationIds = remember(context) {
+        SharedPreferencesCloudConversationIdStore(context.applicationContext)
+    }
 
     LaunchedEffect(authRepository) {
         session = authRepository.restoreSession()
@@ -109,83 +125,259 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+            Column(
+                modifier = Modifier.fillMaxSize().padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    ZayronLogo(112)
+                    Spacer(Modifier.height(14.dp))
+                    Text("ZAYRON AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+                    Text("Think Beyond Limits.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(Modifier.height(18.dp))
+                CircularProgressIndicator(color = Color(0xFF16BFFF))
+                Spacer(Modifier.height(12.dp))
+                Text("Preparing your workspace", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        session != null || preview -> Workspace(
+        session != null -> Workspace(
+            session = session!!,
             darkTheme = darkTheme,
-            onToggleTheme = onToggleTheme
+            onToggleTheme = onToggleTheme,
+            onSignOut = {
+                scope.launch {
+                    try {
+                        authRepository.signOut()
+                    } finally {
+                        cloudConversationIds.clear()
+                        session = null
+                    }
+                }
+            }
         )
         else -> SignIn(
             authRepository = authRepository,
-            onAuthenticated = { session = it },
-            onPreview = { preview = true }
+            onAuthenticated = {
+                cloudConversationIds.clear()
+                session = it
+            }
         )
+    }
+}
+
+
+@Composable
+private fun WorkspaceInfoScreen(
+    section: String,
+    onOpenChat: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val title = when (section) {
+        "Credits" -> "Credits & usage"
+        else -> section
+    }
+    val description = when (section) {
+        "Projects" -> "Keep related conversations, files and AI work together in one place."
+        "History" -> "Your conversations belong to your Zayron account and will appear here as history sync is completed."
+        "Plugins" -> "Connect trusted services and tools to extend what Zayron AI can do."
+        else -> "Review your available credits, usage and transaction history."
+    }
+    val status = when (section) {
+        "Projects" -> "Project workspace is being connected"
+        "History" -> "Conversation history sync is being connected"
+        "Plugins" -> "Plugin connections are not active yet"
+        else -> "Live wallet and credit balance are not connected yet"
+    }
+    Column(
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(description, style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(status, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "This area is available in the workspace navigation. We will only show real account data and working features here; no sample credit balance, fake transactions or pretend integrations.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        OutlinedButton(onClick = onOpenChat, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.ChatBubbleOutline, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Return to Zayron AI")
+        }
     }
 }
 
 @Composable
 private fun SignIn(
-    authRepository: AuthRepository,
-    onAuthenticated: (AuthSession) -> Unit,
-    onPreview: () -> Unit
+    authRepository: BackendAuthRepository,
+    onAuthenticated: (AuthSession) -> Unit
 ) {
+    var isSignUp by rememberSaveable { mutableStateOf(false) }
+    var isPasswordRecovery by rememberSaveable { mutableStateOf(false) }
+    var displayName by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
-            Modifier.fillMaxSize().padding(28.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            ZayronLogo(78)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                ZayronLogo(104)
+                Spacer(Modifier.height(10.dp))
+                Text("ZAYRON AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+                Text("Think Beyond Limits.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Spacer(Modifier.height(16.dp))
-            Text("ZAYRON AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Think Beyond Limits.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(40.dp))
-            Text("Welcome back", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text("Sign in to your AI workspace", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(32.dp))
+            Text(
+                when {
+                    isPasswordRecovery -> "Reset your password"
+                    isSignUp -> "Create your account"
+                    else -> "Welcome back"
+                },
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                when {
+                    isPasswordRecovery -> "We'll send a password reset link to your email."
+                    isSignUp -> "Sign up to start using your Zayron AI workspace."
+                    else -> "Sign in to your AI workspace"
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Spacer(Modifier.height(22.dp))
+            if (isSignUp && !isPasswordRecovery) {
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it; errorMessage = null; statusMessage = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Your name (optional)") },
+                    singleLine = true
+                )
+                Spacer(Modifier.height(10.dp))
+            }
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it; errorMessage = null },
+                onValueChange = { email = it; errorMessage = null; statusMessage = null },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Email address") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
             )
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it; errorMessage = null },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Password") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation()
-            )
-            Spacer(Modifier.height(16.dp))
+            if (!isPasswordRecovery) {
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; errorMessage = null; statusMessage = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+            }
+            if (isSignUp && !isPasswordRecovery) {
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it; errorMessage = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Confirm password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Text(
+                    "Use at least 8 characters.",
+                    modifier = Modifier.align(Alignment.Start).padding(top = 6.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (!isSignUp && !isPasswordRecovery) {
+                TextButton(
+                    onClick = { isPasswordRecovery = true; statusMessage = null; errorMessage = null },
+                    modifier = Modifier.align(Alignment.End)
+                ) { Text("Forgot password?") }
+            }
+            Spacer(Modifier.height(12.dp))
             Button(
                 onClick = {
-                    val submittedPassword = password.toCharArray()
-                    password = ""
                     errorMessage = null
-                    scope.launch {
-                        isLoading = true
-                        when (val result = authRepository.signIn(
-                            SignInCredentials(email.trim(), submittedPassword)
-                        )) {
-                            is AuthResult.Authenticated -> onAuthenticated(result.session)
-                            is AuthResult.Failed -> errorMessage = result.reason.toUserMessage()
+                    statusMessage = null
+                    when {
+                        isPasswordRecovery -> scope.launch {
+                            isLoading = true
+                            val failure = authRepository.requestPasswordReset(email.trim())
+                            if (failure == null) {
+                                statusMessage = "If an account exists for this email, a password reset link will be sent."
+                            } else errorMessage = failure.toUserMessage()
+                            isLoading = false
                         }
-                        isLoading = false
+                        isSignUp -> {
+                            if (password.length < 8) {
+                                errorMessage = "Your password must be at least 8 characters."
+                            } else if (password != confirmPassword) {
+                                errorMessage = "The passwords do not match."
+                            } else {
+                                val submittedPassword = password.toCharArray()
+                                password = ""
+                                confirmPassword = ""
+                                scope.launch {
+                                    isLoading = true
+                                    when (val result = authRepository.signUp(email.trim(), submittedPassword, displayName)) {
+                                        is SignUpResult.Registered -> {
+                                            if (result.session != null) {
+                                                onAuthenticated(result.session)
+                                            } else {
+                                                isSignUp = false
+                                                statusMessage = "Your account has been created. Check your email to verify it, then sign in."
+                                            }
+                                        }
+                                        is SignUpResult.Failed -> errorMessage = result.reason.toUserMessage()
+                                    }
+                                    isLoading = false
+                                }
+                            }
+                        }
+                        else -> {
+                            val submittedPassword = password.toCharArray()
+                            password = ""
+                            scope.launch {
+                                isLoading = true
+                                when (val result = authRepository.signIn(
+                                    SignInCredentials(email.trim(), submittedPassword)
+                                )) {
+                                    is AuthResult.Authenticated -> onAuthenticated(result.session)
+                                    is AuthResult.Failed -> errorMessage = result.reason.toUserMessage()
+                                }
+                                isLoading = false
+                            }
+                        }
                     }
                 },
-                enabled = !isLoading && email.isNotBlank() && password.isNotEmpty(),
+                enabled = !isLoading && email.contains("@") &&
+                    (isPasswordRecovery || password.isNotEmpty()) &&
+                    (!isSignUp || (displayName.length <= 80 && confirmPassword.isNotEmpty())),
                 modifier = Modifier.fillMaxWidth().height(50.dp)
             ) {
                 if (isLoading) {
@@ -195,30 +387,54 @@ private fun SignIn(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("Signing in…")
+                    Text("Please wait…")
                 } else {
                     Icon(Icons.Default.Lock, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Sign in")
+                    Text(
+                        when {
+                            isPasswordRecovery -> "Send reset link"
+                            isSignUp -> "Create account"
+                            else -> "Sign in"
+                        }
+                    )
                 }
             }
             errorMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 10.dp))
+            }
+            statusMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 10.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = {
+                when {
+                    isPasswordRecovery -> isPasswordRecovery = false
+                    else -> isSignUp = !isSignUp
+                }
+                password = ""
+                confirmPassword = ""
+                errorMessage = null
+                statusMessage = null
+            }) {
                 Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 10.dp)
+                    when {
+                        isPasswordRecovery -> "Back to sign in"
+                        isSignUp -> "Already have an account? Sign in"
+                        else -> "New to Zayron AI? Create an account"
+                    }
                 )
             }
             if (!AiServiceConfig.isConfigured) {
                 Text(
-                    "The secure backend is not deployed and connected yet. Sign-in will become available when its HTTPS address is configured.",
+                    "The secure backend is not connected yet. Account access will be available when its HTTPS service is ready.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
-            TextButton(onClick = onPreview) { Text("Preview workspace") }
         }
     }
 }
@@ -235,7 +451,12 @@ private fun AuthFailureCode.toUserMessage(): String = when (this) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
+private fun Workspace(
+    session: AuthSession,
+    darkTheme: Boolean,
+    onToggleTheme: () -> Unit,
+    onSignOut: () -> Unit
+) {
     var mode by rememberSaveable { mutableStateOf("AI Chat") }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -246,9 +467,16 @@ private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
 
     val sections = listOf(
         "YOUR ASSISTANT" to listOf(
+            "Home" to "Home",
             "Zayron AI" to "AI Chat"
         ),
+        "YOUR WORK" to listOf(
+            "Projects" to "Projects",
+            "History" to "History",
+            "Plugins" to "Plugins"
+        ),
         "ACCOUNT" to listOf(
+            "Credits & usage" to "Credits",
             "Settings" to "Settings"
         )
     )
@@ -261,6 +489,10 @@ private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
         "App Builder" -> Icons.Default.PhoneAndroid
         "Document AI" -> Icons.Default.Description
         "Settings" -> Icons.Default.Settings
+        "Projects" -> Icons.Default.FolderOpen
+        "History" -> Icons.Default.History
+        "Plugins" -> Icons.Default.Extension
+        "Credits" -> Icons.Default.AccountBalanceWallet
         else -> Icons.Default.Mic
     }
 
@@ -355,10 +587,22 @@ private fun Workspace(darkTheme: Boolean, onToggleTheme: () -> Unit) {
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (mode) {
+                    "Home" -> DashboardScreen(
+                        onToolSelected = { selected -> mode = selected },
+                        modifier = Modifier.fillMaxSize()
+                    )
                     "AI Chat" -> ChatScreen(Modifier.fillMaxSize())
+                    "Projects", "History", "Plugins", "Credits" -> WorkspaceInfoScreen(
+                        section = mode,
+                        onOpenChat = { mode = "AI Chat" },
+                        modifier = Modifier.fillMaxSize()
+                    )
                     "Settings" -> SettingsScreen(
                         darkTheme = darkTheme,
+                        accountEmail = session.email,
                         onToggleTheme = onToggleTheme,
+                        onSignOut = onSignOut,
+                        onOpenCredits = { mode = "Credits" },
                         modifier = Modifier.fillMaxSize()
                     )
                     else -> ToolWorkspaceScreen(mode = mode, modifier = Modifier.fillMaxSize())

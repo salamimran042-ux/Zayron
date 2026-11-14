@@ -29,6 +29,11 @@ sealed class AuthResult {
     data class Failed(val reason: AuthFailureCode) : AuthResult()
 }
 
+sealed class SignUpResult {
+    data class Registered(val confirmationRequired: Boolean, val session: AuthSession? = null) : SignUpResult()
+    data class Failed(val reason: AuthFailureCode) : SignUpResult()
+}
+
 /**
  * Credentials are supplied only for the duration of a sign-in attempt.
  * Implementations must never persist or log the password.

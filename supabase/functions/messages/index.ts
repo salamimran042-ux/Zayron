@@ -5,6 +5,13 @@ const corsHeaders = {
   "access-control-allow-headers": "authorization, apikey, content-type",
   "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
 };
+const ATTACHMENT_BUCKET = "zayron-attachments";
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MIME_EXTENSIONS: Record<string, string> = {
+  "application/pdf": "pdf", "text/plain": "txt", "text/markdown": "md",
+  "text/csv": "csv", "application/json": "json", "image/png": "png",
+  "image/jpeg": "jpg", "image/webp": "webp",
+};
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status, headers: { ...corsHeaders, "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
@@ -32,12 +39,71 @@ async function authenticatedClient(request: Request) {
   if (!url || !key) return { error: "service_not_configured" as const };
   const client = createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-    global: { headers: { Authorization: `Bearer ${match[1]}` } },
+    global: { headers: { Authorization: \`Bearer \${match[1]}\` } },
   });
   const { data, error } = await client.auth.getUser(match[1]);
   if (error || !data.user?.id) return { error: "unauthorized" as const };
   return { client, user: data.user };
 }
+
+type AttachmentReference = {
+  id: string;
+  display_name: string;
+  mime_type: string;
+  size_bytes: number;
+  storage_path: string;
+};
+
+async function validateAttachments(
+  client: ReturnType<typeof createClient>,
+  ownerId: string,
+  input: unknown,
+): Promise<AttachmentReference[] | null> {
+  if (input === undefined) return [];
+  if (!Array.isArray(input) || input.length > 5) return null;
+  const result: AttachmentReference[] = [];
+  for (const value of input) {
+    if (!value || typeof value !== "object") return null;
+    const item = value as Record<string, unknown>;
+    const id = typeof item.id === "string" ? item.id : "";
+    const displayName = typeof item.display_name === "string" ? item.display_name.trim() : "";
+    const mimeType = typeof item.mime_type === "string" ? item.mime_type.toLowerCase() : "";
+    const sizeBytes = item.size_bytes;
+    const storagePath = typeof item.storage_path === "string" ? item.storage_path : "";
+    const extension = MIME_EXTENSIONS[mimeType];
+    if (!/^[0-9a-f-]{36}$/i.test(id) ||
+        !displayName || displayName.length > 160 ||
+        !extension ||
+        typeof sizeBytes !== "number" || !Number.isSafeInteger(sizeBytes) ||
+        sizeBytes < 1 || sizeBytes > MAX_ATTACHMENT_BYTES) return null;
+
+    // Only server-issued UUID filenames inside the authenticated user's folder
+    // are accepted. Public URLs, traversal, and another user's path are rejected.
+    const match = storagePath.match(/^([0-9a-f-]{36})\/([0-9a-f]{32})\.(pdf|txt|md|csv|json|png|jpg|webp)$/i);
+    if (!match || match[1].toLowerCase() !== ownerId.toLowerCase() ||
+        match[3].toLowerCase() !== extension) return null;
+    const filename = match[2] + "." + match[3];
+    const { data: objects, error } = await client.storage
+      .from(ATTACHMENT_BUCKET)
+      .list(ownerId, { search: filename, limit: 100 });
+    const object = objects?.find((entry) => entry.name === filename);
+    if (error || !object) return null;
+    const actualSize = Number(object.metadata?.size);
+    const actualMime = object.metadata?.mimetype;
+    if (!Number.isSafeInteger(actualSize) || actualSize !== sizeBytes ||
+        typeof actualMime !== "string" || actualMime.toLowerCase() !== mimeType) return null;
+
+    result.push({
+      id,
+      display_name: displayName,
+      mime_type: mimeType,
+      size_bytes: sizeBytes,
+      storage_path: storagePath,
+    });
+  }
+  return result;
+}
+
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const auth = await authenticatedClient(request);
@@ -62,7 +128,10 @@ Deno.serve(async (request: Request) => {
     const conversationId = typeof body.conversation_id === "string" ? body.conversation_id : "";
     const content = typeof body.content === "string" ? body.content : "";
     if (!/^[0-9a-f-]{36}$/i.test(conversationId)) return json({ error: "invalid_conversation_id" }, 400);
-    if (!content.trim() || content.length > 100000) return json({ error: "invalid_message_content" }, 400);
+    if (content.length > 100000) return json({ error: "invalid_message_content" }, 400);
+    const attachments = await validateAttachments(client, user.id, body.attachments);
+    if (attachments === null) return json({ error: "invalid_or_unowned_attachment" }, 400);
+    if (!content.trim() && attachments.length === 0) return json({ error: "invalid_message_content" }, 400);
 
     const { data: conversation, error: conversationError } = await client.from("conversations")
       .select("id").eq("id", conversationId).eq("user_id", user.id).maybeSingle();
@@ -71,7 +140,7 @@ Deno.serve(async (request: Request) => {
 
     const { data, error } = await client.from("messages").insert({
       id: crypto.randomUUID(), conversation_id: conversationId, user_id: user.id,
-      role: "user", content, status: "complete", metadata: {},
+      role: "user", content, status: "complete", metadata: { attachments },
     }).select("id,conversation_id,role,content,status,metadata,created_at").single();
     if (error || !data) return json({ error: "message_create_failed" }, 500);
 

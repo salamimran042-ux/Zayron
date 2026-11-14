@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: zayron-ai-document-worker-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -132,11 +132,13 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google_apis
+          target: default
           arch: x86_64
           profile: pixel_2
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data -camera-back none -memory 4096 -cores 4
-          disable-animations: false
+          cores: 2
+          ram-size: 2048M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data -camera-back none
+          disable-animations: true
           emulator-boot-timeout: 900
           script: |
             adb wait-for-device
@@ -147,7 +149,15 @@ jobs:
             adb shell settings put global verifier_verify_adb_installs 0 || echo "::warning::Could not disable ADB install verification; continuing."
             adb shell settings put global package_verifier_enable 0 || echo "::warning::Could not disable package verification; continuing."
             adb shell settings put global verifier_timeout 0 || echo "::warning::Could not adjust verifier timeout; continuing."
-            gradle --no-daemon :app:connectedDebugAndroidTest -x :app:assembleDebug -x :app:assembleDebugAndroidTest
+            gradle --no-daemon :app:connectedDebugAndroidTest -x :app:assembleDebug -x :app:assembleDebugAndroidTest; test_status=$?; mkdir -p "$RUNNER_TEMP/zayron-instrumentation-diagnostics"; adb logcat -d -v threadtime > "$RUNNER_TEMP/zayron-instrumentation-diagnostics/logcat.txt" || true; find app/build/outputs -type f | grep -E 'androidTest-results|connected' | while IFS= read -r file; do cp --parents "$file" "$RUNNER_TEMP/zayron-instrumentation-diagnostics/"; done || true; exit "$test_status"
+      - name: Preserve Android instrumentation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zayron-Android-Instrumentation-Diagnostics
+          path: ${{ runner.temp }}/zayron-instrumentation-diagnostics/
+          if-no-files-found: warn
+          retention-days: 14
 
   backend-security-audit:
     name: Backend dependency security audit
@@ -213,7 +223,7 @@ jobs:
       - name: Verify the versioned migration set
         run: |
           count=$(find migrations -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]_*.sql' | wc -l)
-          test "$count" -eq 13
+          test "$count" -eq 15
           test -z "${ZAYRON_MIGRATION_DATABASE_URL:-}"
           echo "Found $count versioned migrations; no live database connection is configured."
 

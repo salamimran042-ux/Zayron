@@ -10,9 +10,13 @@ Supply values through protected environment variables or a secret manager. Never
 - `ZAYRON_DATABASE_URL`: PostgreSQL connection string for the restricted `zayron_runtime` login. This is the only database URL the running API needs.
 - `ZAYRON_MIGRATION_DATABASE_URL`: privileged PostgreSQL connection string used only for the one-off migration command. Do not put it in the API service's runtime environment.
 - `ZAYRON_WORKER_TOKEN`: long random secret used only by trusted job workers; keep it in a server-side secret manager.
+- `ZAYRON_WORKER_API_URL`: HTTPS origin of the deployed Zayron API, configured only on the background worker.
+- `ZAYRON_WORKER_ID`: stable worker identifier (defaults to `zayron-document-worker`).
+- `ZAYRON_WORKER_POLL_SECONDS`: idle queue polling interval (defaults to 5 seconds).
+- `ZAYRON_WORKER_LEASE_SECONDS`: job lease duration from 30 to 900 seconds (defaults to 600).
 - `ZAYRON_SUPABASE_URL`: clean HTTPS Supabase project origin.
 - `ZAYRON_SUPABASE_PUBLISHABLE_KEY`: current Supabase publishable API key used by the server-side Auth adapter.
-- `ZAYRON_SUPABASE_SECRET_KEY`: optional server-only Supabase secret key for future narrowly scoped administrative operations. It is not required for the current Auth flows and must never be sent to Android.
+- `ZAYRON_SUPABASE_SECRET_KEY`: server-only Supabase secret key used by the isolated document worker to retrieve one already-authorized private object. It bypasses RLS, so the worker verifies the job lease, original user message, owner UUID path, MIME type and size before making the exact-object request. It must never be sent to Android.
 - `ZAYRON_SUPABASE_ANON_KEY` and `ZAYRON_SUPABASE_SERVICE_ROLE_KEY`: legacy compatibility variables only. Prefer the current publishable/secret key names for new projects.
 
 The Auth adapter sends the publishable key in the Supabase `apikey` header. It does not use the secret key for login, registration, refresh, or logout. Configuration status reveals presence only, never secret values. Do not put any Supabase secret key, database password, or worker token in the Android app or public repository.
@@ -58,7 +62,7 @@ The versioned migrations create the platform's core persistence tables:
 
 The API exposes account-scoped profile, conversation, message, job, entitlement and usage-read endpoints. Job creation is idempotent when an `Idempotency-Key` is supplied. A client can cancel a job only while it remains queued. The server never trusts a client-supplied account ID; ownership comes from the verified JWT subject. PostgreSQL RLS independently enforces the same ownership boundary for every query.
 
-The job API includes a worker control plane: workers authenticate with a separate server-side token, claim jobs using PostgreSQL `FOR UPDATE SKIP LOCKED`, renew leases, and report success or failure. Failures can be rescheduled within the attempt limit. Worker endpoints never accept a user ID from the client. The worker execution process and actual tool handlers are still separate work; no AI provider or file storage is connected. Usage events and entitlement grants are server-owned and cannot be written through client routes.
+The job API includes a worker control plane: workers authenticate with a separate server-side token, claim jobs using PostgreSQL `FOR UPDATE SKIP LOCKED`, renew leases, and report success or failure. Failures can be rescheduled within the attempt limit. Worker endpoints never accept a user ID from the client. The document worker implementation is described below; it is not live until separately deployed and configured. No AI provider is connected. Usage events and entitlement grants are server-owned and cannot be written through client routes.
 
 ## Authenticated chat boundary
 
@@ -80,3 +84,60 @@ This route is a safe API contract foundation, not a live AI integration. A serve
 Supabase Auth owns credential validation, refresh rotation and session revocation. The backend does not persist passwords or refresh tokens. Android must store token material only in its Android Keystore-backed encrypted store. Provider response bodies and credentials are not exposed in API errors. Supabase project-side rate limits must be reviewed before production.
 
 These routes are implemented in source and tested with mocked provider responses; they are not live until a real Supabase project is configured and the backend is deployed. The current key names are supported while legacy anon/service-role environment names remain temporarily compatible.
+
+
+## Private attachment retrieval and document extraction
+
+- `POST /api/v1/cloud/attachments/extract` accepts an attachment storage path, declared MIME type and byte count. It requires the user's verified Supabase JWT.
+- The backend validates that the path is a server-generated UUID filename inside that same user's folder, then downloads the object from the private bucket using the user's JWT and publishable key. It does not create a public URL or use a service-role key.
+- PDF text extraction is bounded to 100 pages and 100,000 characters. Plain text, Markdown, CSV and JSON are decoded as UTF-8. Declared size and MIME type are checked against the retrieved object.
+- Images are deliberately rejected with `VISION_PROCESSING_NOT_CONFIGURED` until a secure vision/model adapter exists. Scanned PDFs with no text layer are not OCR'd yet.
+- This endpoint prepares document text for a future model request; it does not generate an AI answer, perform RAG, or claim that Zayron understands the attachment.
+
+
+## Document job orchestration
+
+- `POST /api/v1/documents/jobs` queues document preparation for one attachment already recorded in a user's own chat message.
+- The request supplies the conversation, message and attachment IDs only. The API loads the message under the authenticated user's database/RLS context, confirms it is a user message in the owned conversation, selects the matching stored attachment reference, and revalidates its owner-scoped UUID storage path and MIME/extension pairing.
+- The endpoint creates an idempotent `document_ingest` job in the existing `ai_jobs` queue. Its payload contains the verified attachment reference and bounded extraction limits, not the file bytes or extracted text.
+- Repeating the same request returns the existing job rather than creating duplicate work. Unsupported image attachments are rejected from this text-extraction job path.
+- This endpoint is queue orchestration. The secure worker implementation below downloads the exact private object, performs bounded text extraction, and persists the result to the owner-scoped job record. No model call, OCR, RAG, or document answer is claimed.
+
+## Secure document worker
+
+Run the document worker as a separate background process, not inside the Android app or the API web process:
+
+```bash
+cd backend
+python -m app.workers.document_worker
+```
+
+Configure the worker with ZAYRON_WORKER_API_URL, ZAYRON_WORKER_TOKEN, ZAYRON_WORKER_ID, ZAYRON_SUPABASE_URL, and ZAYRON_SUPABASE_SECRET_KEY in the hosting provider's protected environment. Do not add these secrets to GitHub source, Android resources, APK build arguments, or logs. The worker process claims only document_ingest jobs. Each process appends a random instance suffix to the configured worker ID, preventing a stale replica from completing work leased by a newer process.
+
+Before retrieving a file, the worker asks the API to re-check the active lease and compare the queued attachment reference against the original user message under that user's RLS context. The worker then requests a short-lived signed URL for only that exact object from the private zayron-attachments bucket, using the server-only Supabase secret key in the apikey header. It downloads through that narrowly scoped URL and never forwards the project secret to the download request. It does not list the bucket, create a public URL, or accept a client-supplied path. The worker rejects signed URLs that leave the configured HTTPS Supabase origin. The downloaded MIME type and byte count must match the stored message metadata.
+
+Extraction supports text-layer PDFs (maximum 100 pages), plain text, Markdown, CSV and JSON, with a 10 MiB input cap, a 100,000-character extraction cap and a 420 KiB serialized result cap. Encrypted PDFs, malformed documents, unsupported types, mismatched metadata and oversized results fail with bounded machine-readable error codes. Scanned PDF OCR and image understanding remain unsupported until a dedicated OCR/vision adapter is added.
+
+While processing, the worker renews its lease through the heartbeat endpoint at one-third of the lease duration. If the server reports that the lease was lost or cancelled, the worker does not persist a result. On success, the worker writes a bounded extraction result to the same leased ai_jobs.result_payload record. Completion is conditional on the worker still owning an unexpired lease; a stale worker cannot overwrite a newer attempt. Job lifecycle events record state and safe metadata, never file bytes or extracted text. The authenticated owner can poll GET /api/v1/documents/jobs/{job_id} to read status and the completed result; RLS and the user-scoped API transaction prevent cross-account reads.
+
+This worker is implemented and covered by mocked storage/API tests. It is not live until a separate background worker service is deployed and its protected environment is configured. Do not place the Supabase secret key or worker token in the API's Android-facing configuration.
+
+
+## Optional AI provider bridge
+
+The API supports an optional OpenAI-compatible chat provider bridge.
+
+Set these environment variables on the backend only:
+- `ZAYRON_AI_PROVIDER_BASE_URL`: provider API root, including `/v1` where applicable.
+- `ZAYRON_AI_PROVIDER_API_KEY`: secret API key; never put this in Android or source control.
+- `ZAYRON_AI_PROVIDER_MODEL`: exact model identifier supported by the selected provider.
+- `ZAYRON_AI_PROVIDER_TIMEOUT_SECONDS`: request timeout (10–180 seconds, default 90).
+
+The provider must implement `POST {base_url}/chat/completions` with OpenAI-compatible
+streaming responses. The chat endpoint fails closed with HTTP 503 until all three
+provider settings are present. Production requires an HTTPS base URL. Provider failures
+are returned as generic SSE error events; upstream response bodies and credentials are
+never forwarded to clients.
+
+This bridge is provider-neutral. It does not select, purchase, or configure a provider,
+and it does not deploy or modify production infrastructure.

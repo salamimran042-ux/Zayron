@@ -1,15 +1,16 @@
 package ai.zayron.client
 
 /**
- * Backend configuration only. No provider API keys belong in the Android client.
+ * Public HTTPS origin for the Zayron staging API.
  *
- * Keep this empty until the FastAPI Zayron backend is deployed to a verified
- * HTTPS origin. A Supabase Edge Functions URL is not interchangeable with the
- * FastAPI service base URL and must not make the client appear connected.
+ * This URL is not a credential. Provider keys, Supabase secret keys, database
+ * passwords and worker tokens must remain in server-side secret storage.
+ * Keep the Android client pointed at the FastAPI backend, not directly at
+ * privileged database endpoints or AI provider APIs.
  */
 object AiServiceConfig {
-    const val API_BASE_URL: String = ""
+    const val API_BASE_URL: String = "https://zayron-ai-api-staging.onrender.com"
 
     val isConfigured: Boolean
-        get() = API_BASE_URL.isNotBlank() && API_BASE_URL.startsWith("https://")
+        get() = API_BASE_URL.startsWith("https://")
 }

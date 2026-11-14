@@ -1,5 +1,7 @@
 package ai.zayron.client.ui.chat
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,6 +16,8 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,16 +46,32 @@ fun ChatScreen(
     var activeSkillRequest by rememberSaveable { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
     val messages = chatViewModel.messages
+    val pendingAttachments = chatViewModel.pendingAttachments
+    val canSend = !chatViewModel.isSending &&
+        pendingAttachments.none { it.isUploading || it.error != null } &&
+        (draft.isNotBlank() || pendingAttachments.any { it.uploaded != null })
+    val attachmentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { selectedUris ->
+        if (selectedUris.isNotEmpty()) chatViewModel.addAttachments(selectedUris)
+    }
 
     val sendDraft = {
         val message = draft.trim()
-        if (message.isNotEmpty() && !chatViewModel.isSending) {
-            val routedSkill = SkillIntentRouter.classify(message)
+        val attachments = pendingAttachments.mapNotNull { it.uploaded }
+        if ((message.isNotEmpty() || attachments.isNotEmpty()) && !chatViewModel.isSending &&
+            pendingAttachments.none { it.isUploading || it.error != null }
+        ) {
+            val routedSkill = if (attachments.isEmpty()) SkillIntentRouter.classify(message) else null
             if (routedSkill != null) {
                 activeSkill = routedSkill.workspaceTitle
                 activeSkillRequest = message
             } else {
-                chatViewModel.sendMessage(message)
+                chatViewModel.sendMessage(
+                    message.ifBlank { "Please review the attached file(s)." },
+                    attachments
+                )
+                chatViewModel.clearPendingAttachments()
             }
             draft = ""
         }
@@ -195,11 +215,20 @@ fun ChatScreen(
                             ).background(if (isUser) ChatPurple else MaterialTheme.colorScheme.surfaceVariant)
                                 .padding(horizontal = 15.dp, vertical = 11.dp)
                         ) {
-                            Text(
-                                message.text,
-                                color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface,
-                                style = MaterialTheme.typography.bodyLarge
-                            )
+                            if (message.text.isNotBlank()) {
+                                Text(
+                                    message.text,
+                                    color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                            message.attachments.forEach { attachment ->
+                                Text(
+                                    "📎 ${attachment.displayName}",
+                                    color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 when {
@@ -219,6 +248,55 @@ fun ChatScreen(
             }
         }
 
+        if (pendingAttachments.isNotEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                pendingAttachments.forEach { item ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.AttachFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                                Text(item.displayName, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(
+                                    when {
+                                        item.isUploading -> "Uploading ${(item.progress * 100).toInt()}%"
+                                        item.error != null -> item.error
+                                        else -> "Private upload complete • ready to send"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (item.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2
+                                )
+                                if (item.isUploading) {
+                                    LinearProgressIndicator(
+                                        progress = item.progress,
+                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                    )
+                                }
+                            }
+                            if (item.error != null) {
+                                IconButton(onClick = { chatViewModel.retryAttachment(item.localId) }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Retry upload")
+                                }
+                            }
+                            IconButton(onClick = { chatViewModel.removeAttachment(item.localId) }) {
+                                Icon(Icons.Default.Close, contentDescription = "Remove attachment")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(26.dp),
@@ -226,9 +304,22 @@ fun ChatScreen(
             shadowElevation = 1.dp
         ) {
             Row(
-                modifier = Modifier.padding(start = 16.dp, end = 7.dp, top = 6.dp, bottom = 6.dp),
+                modifier = Modifier.padding(start = 5.dp, end = 7.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                IconButton(
+                    onClick = {
+                        attachmentPicker.launch(
+                            arrayOf(
+                                "application/pdf", "text/plain", "text/markdown", "text/csv",
+                                "application/json", "image/png", "image/jpeg", "image/webp"
+                            )
+                        )
+                    },
+                    enabled = !chatViewModel.isSending
+                ) {
+                    Icon(Icons.Default.AttachFile, contentDescription = "Attach files")
+                }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it },
@@ -249,9 +340,9 @@ fun ChatScreen(
                     onClick = {
                         if (chatViewModel.isSending) chatViewModel.cancelCurrentRequest() else sendDraft()
                     },
-                    enabled = chatViewModel.isSending || draft.isNotBlank(),
+                    enabled = chatViewModel.isSending || canSend,
                     modifier = Modifier.size(46.dp).clip(CircleShape).background(
-                        if (chatViewModel.isSending || draft.isNotBlank()) ChatPurple else ChatPurple.copy(alpha = 0.35f)
+                        if (chatViewModel.isSending || canSend) ChatPurple else ChatPurple.copy(alpha = 0.35f)
                     )
                 ) {
                     if (chatViewModel.isSending) {
@@ -268,7 +359,7 @@ fun ChatScreen(
         }
 
         Text(
-            "Your messages stay on this device unless a configured Zayron backend accepts them. Local-only messages are never uploaded as chat history.",
+            "Files upload privately to your Zayron account. They are added to the local chat message when you send it.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
