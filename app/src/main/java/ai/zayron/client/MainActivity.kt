@@ -109,6 +109,7 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
         BackendAuthRepository(AndroidKeystoreSessionStore(context.applicationContext))
     }
     var session by remember { mutableStateOf<AuthSession?>(null) }
+    var guestMode by rememberSaveable { mutableStateOf(false) }
     var restoringSession by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val cloudConversationIds = remember(context) {
@@ -142,17 +143,19 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
                 Text("Preparing your workspace", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        session != null -> Workspace(
-            session = session!!,
+        session != null || guestMode -> Workspace(
+            accountEmail = session?.email ?: "Guest mode",
+            isGuest = guestMode,
             darkTheme = darkTheme,
             onToggleTheme = onToggleTheme,
             onSignOut = {
                 scope.launch {
                     try {
-                        authRepository.signOut()
+                        if (!guestMode) authRepository.signOut()
                     } finally {
                         cloudConversationIds.clear()
                         session = null
+                        guestMode = false
                     }
                 }
             }
@@ -161,7 +164,12 @@ private fun ZayronRoot(darkTheme: Boolean, onToggleTheme: () -> Unit) {
             authRepository = authRepository,
             onAuthenticated = {
                 cloudConversationIds.clear()
+                guestMode = false
                 session = it
+            },
+            onContinueAsGuest = {
+                cloudConversationIds.clear()
+                guestMode = true
             }
         )
     }
@@ -222,7 +230,8 @@ private fun WorkspaceInfoScreen(
 @Composable
 private fun SignIn(
     authRepository: BackendAuthRepository,
-    onAuthenticated: (AuthSession) -> Unit
+    onAuthenticated: (AuthSession) -> Unit,
+    onContinueAsGuest: () -> Unit
 ) {
     var isSignUp by rememberSaveable { mutableStateOf(false) }
     var isPasswordRecovery by rememberSaveable { mutableStateOf(false) }
@@ -409,6 +418,14 @@ private fun SignIn(
                     modifier = Modifier.padding(top = 10.dp))
             }
             Spacer(Modifier.height(12.dp))
+            if (!isPasswordRecovery) {
+                OutlinedButton(
+                    onClick = onContinueAsGuest,
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text("Continue as Guest")
+                }
+            }
             TextButton(onClick = {
                 when {
                     isPasswordRecovery -> isPasswordRecovery = false
@@ -452,7 +469,8 @@ private fun AuthFailureCode.toUserMessage(): String = when (this) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Workspace(
-    session: AuthSession,
+    accountEmail: String,
+    isGuest: Boolean,
     darkTheme: Boolean,
     onToggleTheme: () -> Unit,
     onSignOut: () -> Unit
@@ -599,7 +617,8 @@ private fun Workspace(
                     )
                     "Settings" -> SettingsScreen(
                         darkTheme = darkTheme,
-                        accountEmail = session.email,
+                        accountEmail = accountEmail,
+                        isGuest = isGuest,
                         onToggleTheme = onToggleTheme,
                         onSignOut = onSignOut,
                         onOpenCredits = { mode = "Credits" },
