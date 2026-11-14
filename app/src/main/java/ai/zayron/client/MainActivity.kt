@@ -423,7 +423,7 @@ private fun SignIn(
                     onClick = onContinueAsGuest,
                     modifier = Modifier.fillMaxWidth().height(48.dp)
                 ) {
-                    Text("View Workspace")
+                    Text("Login as Guest")
                 }
             }
             TextButton(onClick = {
