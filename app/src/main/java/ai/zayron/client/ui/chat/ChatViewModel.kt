@@ -54,6 +54,31 @@ class ChatViewModel(
     )
 ) : AndroidViewModel(application) {
 
+    /**
+     * Android's default ViewModel factory looks for a public Application-only
+     * constructor when creating an AndroidViewModel from Compose's viewModel().
+     * Keep this overload so the chat screen can be opened without a custom factory.
+     */
+    constructor(application: Application) : this(
+        application,
+        LocalChatRepository(application),
+        OkHttpChatRemoteDataSource(
+            accessTokenProvider = SecureChatAccessTokenProvider(
+                AndroidKeystoreSessionStore(application)
+            )
+        ),
+        BackendCloudChatStore(
+            accessTokenProvider = SecureChatAccessTokenProvider(
+                AndroidKeystoreSessionStore(application)
+            ),
+            conversationIds = SharedPreferencesCloudConversationIdStore(application)
+        ),
+        AttachmentUploadClient(
+            application.contentResolver,
+            SecureChatAccessTokenProvider(AndroidKeystoreSessionStore(application))
+        )
+    )
+
     val messages = mutableStateListOf<ChatMessage>()
     data class PendingAttachment(
         val localId: String,
