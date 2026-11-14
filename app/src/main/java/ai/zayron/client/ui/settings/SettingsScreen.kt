@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 fun SettingsScreen(
     darkTheme: Boolean,
     accountEmail: String,
+    isGuest: Boolean,
     onToggleTheme: () -> Unit,
     onSignOut: () -> Unit,
     onOpenCredits: () -> Unit,
@@ -70,7 +71,7 @@ fun SettingsScreen(
         SettingsGroup(title = "ACCOUNT & SECURITY") {
             SettingsRow(
                 icon = { Icon(Icons.Default.AccountCircle, contentDescription = null) },
-                title = "Signed in as",
+                title = if (isGuest) "Using guest access" else "Signed in as",
                 subtitle = accountEmail
             )
             SettingsRow(
@@ -112,21 +113,21 @@ fun SettingsScreen(
                 contentColor = MaterialTheme.colorScheme.onError
             )
         ) {
-            Text("Sign out")
+            Text(if (isGuest) "Exit guest mode" else "Sign out")
         }
     }
 
     if (confirmSignOut) {
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
-            title = { Text("Sign out of Zayron AI?") },
-            text = { Text("Your secure session will end on this device. You will need to sign in again to access your workspace.") },
+            title = { Text(if (isGuest) "Exit guest mode?" else "Sign out of Zayron AI?") },
+            text = { Text(if (isGuest) "You will return to the welcome screen. Your guest session is local to this app." else "Your secure session will end on this device. You will need to sign in again to access your workspace.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmSignOut = false
                     onSignOut()
                 }) {
-                    Text("Sign out", color = MaterialTheme.colorScheme.error)
+                    Text(if (isGuest) "Exit guest mode" else "Sign out", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
