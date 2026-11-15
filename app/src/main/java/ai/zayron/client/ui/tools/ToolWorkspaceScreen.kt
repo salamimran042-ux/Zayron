@@ -112,7 +112,7 @@ fun ToolWorkspaceScreen(
 
             "Image Editing" -> ImageEditingScreen(Modifier.fillMaxSize())
 
-            "Document AI" -> DocumentAiScreen(Modifier.fillMaxSize())
+            "Document AI" -> DocumentCareerWorkspaceScreen(Modifier.fillMaxSize())
 
             "App Builder" -> {
                 ToolHeading(

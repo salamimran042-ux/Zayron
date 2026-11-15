@@ -10,6 +10,9 @@ from app.auth.token_verifier import SupabaseTokenVerifier
 from app.core.config import get_settings
 from app.db.pool import DatabaseRuntime
 from app.platform.chat_routes import router as chat_router
+from app.platform.cloud_routes import router as cloud_router
+from app.platform.attachment_routes import router as attachment_router
+from app.platform.document_job_routes import router as document_job_router
 from app.platform.routes import router as platform_router
 from app.platform.worker_routes import router as worker_router
 
@@ -42,6 +45,9 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(platform_router)
 app.include_router(chat_router)
+app.include_router(cloud_router)
+app.include_router(attachment_router)
+app.include_router(document_job_router)
 app.include_router(worker_router)
 
 

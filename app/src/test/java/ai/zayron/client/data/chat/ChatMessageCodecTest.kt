@@ -1,6 +1,7 @@
 package ai.zayron.client.data.chat
 
 import ai.zayron.client.ui.chat.ChatMessage
+import ai.zayron.client.ui.chat.ChatAttachmentReference
 import ai.zayron.client.ui.chat.ChatRole
 import ai.zayron.client.ui.chat.DeliveryState
 import org.junit.Assert.assertEquals
@@ -17,6 +18,19 @@ class ChatMessageCodecTest {
         )
 
         assertEquals(messages, ChatMessageCodec.decode(ChatMessageCodec.encode(messages)))
+    }
+
+    @Test
+    fun roundTripPreservesPrivateAttachmentReferences() {
+        val attachment = ChatAttachmentReference(
+            "attachment-1", "brief.pdf", "application/pdf", 2048L,
+            "owner-folder/private-object.pdf"
+        )
+        val message = ChatMessage(
+            "user-with-file", "Please review this.", ChatRole.USER,
+            DeliveryState.SENT, listOf(attachment)
+        )
+        assertEquals(listOf(message), ChatMessageCodec.decode(ChatMessageCodec.encode(listOf(message))))
     }
 
     @Test

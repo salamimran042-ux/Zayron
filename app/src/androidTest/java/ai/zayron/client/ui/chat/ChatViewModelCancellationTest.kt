@@ -7,6 +7,7 @@ import ai.zayron.client.data.chat.ChatRemoteDataSource
 import ai.zayron.client.data.chat.ChatRepository
 import ai.zayron.client.data.chat.ChatStreamEvent
 import ai.zayron.client.data.chat.ChatStreamRequest
+import ai.zayron.client.data.chat.CloudChatStore
 import ai.zayron.client.data.network.NetworkResult
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -90,7 +91,10 @@ class ChatViewModelCancellationTest {
     ): ChatViewModel {
         val application = InstrumentationRegistry.getInstrumentation()
             .targetContext.applicationContext as Application
-        return ChatViewModel(application, repository, remote)
+        // Cancellation tests must isolate ChatViewModel from Android Keystore,
+        // persisted cloud IDs, and network/authentication setup. The remote
+        // stream is the only asynchronous dependency controlled by this test.
+        return ChatViewModel(application, repository, remote, NoCloudChatStore())
     }
 
     private fun onMainThread(action: () -> Unit) {
@@ -112,6 +116,15 @@ class ChatViewModelCancellationTest {
             Thread.sleep(10)
         }
         assertTrue(message, condition())
+    }
+
+    private class NoCloudChatStore : CloudChatStore {
+        override suspend fun saveUserMessage(
+            content: String,
+            attachments: List<ChatAttachmentReference>
+        ): NetworkResult<Unit> = NetworkResult.AuthenticationRequired
+
+        override fun startNewConversation() = Unit
     }
 
     private class InMemoryChatRepository : ChatRepository {

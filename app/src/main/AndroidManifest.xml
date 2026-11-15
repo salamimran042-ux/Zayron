@@ -11,6 +11,8 @@
     <application
         android:allowBackup="false"
         android:label="Zayron AI"
+        android:icon="@drawable/zayron_launcher"
+        android:roundIcon="@drawable/zayron_launcher"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity

@@ -1,0 +1,107 @@
+name: Zayron AI Staging Document Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_staging_run:
+        description: "Explicitly confirm a bounded staging-only worker run"
+        required: true
+        type: choice
+        options:
+          - DO_NOT_RUN
+          - RUN_STAGING_WORKER
+        default: DO_NOT_RUN
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zayron-staging-document-worker
+  cancel-in-progress: false
+
+jobs:
+  document-worker:
+    name: Bounded staging document worker
+    if: >-
+      github.ref == 'refs/heads/feature/backend-connection-wiring' &&
+      inputs.confirm_staging_run == 'RUN_STAGING_WORKER'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: zayron-staging
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      ZAYRON_WORKER_API_URL: ${{ secrets.ZAYRON_WORKER_API_URL }}
+      ZAYRON_WORKER_TOKEN: ${{ secrets.ZAYRON_WORKER_TOKEN }}
+      ZAYRON_SUPABASE_URL: ${{ secrets.ZAYRON_SUPABASE_URL }}
+      ZAYRON_SUPABASE_SECRET_KEY: ${{ secrets.ZAYRON_SUPABASE_SECRET_KEY }}
+      ZAYRON_WORKER_ID: github-actions-staging-document-worker
+      ZAYRON_WORKER_POLL_SECONDS: "5"
+      ZAYRON_WORKER_LEASE_SECONDS: "600"
+
+    steps:
+      - name: Check out staging branch source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Validate required secrets without printing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in ZAYRON_WORKER_API_URL ZAYRON_WORKER_TOKEN ZAYRON_SUPABASE_URL ZAYRON_SUPABASE_SECRET_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required staging secret is missing: ${name}"
+              exit 1
+            fi
+          done
+          if [[ "$ZAYRON_WORKER_API_URL" != https://* || "$ZAYRON_SUPABASE_URL" != https://* ]]; then
+            echo "::error::The staging API and Supabase URLs must use HTTPS."
+            exit 1
+          fi
+
+      - name: Check staging API and database readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..8}; do
+            if response="$(curl --fail --silent --show-error --max-time 20 "$ZAYRON_WORKER_API_URL/ready")"; then
+              echo "$response"
+              if [[ "$response" == *'"database":"reachable"'* || "$response" == *'"database": "reachable"'* ]]; then
+                exit 0
+              fi
+              echo "::error::Staging API did not report database reachable."
+              exit 1
+            fi
+            echo "Staging API not ready yet (attempt $attempt/8); retrying."
+            sleep 10
+          done
+          echo "::error::Staging API readiness check failed."
+          exit 1
+
+      - name: Install the existing backend worker package
+        run: python -m pip install .
+
+      - name: Run worker for at most 10 minutes, then shut down gracefully
+        shell: bash
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=30s 10m python -m app.workers.document_worker
+          result=$?
+          set -e
+          if [[ "$result" -eq 124 ]]; then
+            echo "The 10-minute staging window ended; the worker received SIGTERM."
+          elif [[ "$result" -ne 0 ]]; then
+            echo "::error::The staging document worker exited with code $result."
+            exit "$result"
+          else
+            echo "The staging document worker exited cleanly."
+          fi
