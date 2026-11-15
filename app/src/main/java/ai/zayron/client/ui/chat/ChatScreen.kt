@@ -1,8 +1,11 @@
 package ai.zayron.client.ui.chat
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.speech.RecognizerIntent
+import android.widget.Toast
 import android.speech.tts.TextToSpeech
 import java.util.Locale
 
@@ -19,6 +22,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -276,11 +281,48 @@ fun ChatScreen(
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
-                            if (!isUser && message.text.isNotBlank()) {
+                            if (!isUser && message.text.isNotBlank() &&
+                                message.deliveryState != DeliveryState.PENDING
+                            ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    IconButton(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(ClipboardManager::class.java)
+                                            clipboard?.setPrimaryClip(
+                                                ClipData.newPlainText("Zayron AI response", message.text)
+                                            )
+                                            Toast.makeText(context, "Response copied", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.size(34.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.ContentCopy,
+                                            contentDescription = "Copy response",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, message.text)
+                                            }
+                                            context.startActivity(
+                                                Intent.createChooser(shareIntent, "Share Zayron AI response")
+                                            )
+                                        },
+                                        modifier = Modifier.size(34.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Share,
+                                            contentDescription = "Share response",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                     IconButton(
                                         onClick = {
                                             speechEngine?.speak(
