@@ -86,7 +86,7 @@ async function validateAttachments(
     const { data: objects, error } = await client.storage
       .from(ATTACHMENT_BUCKET)
       .list(ownerId, { search: filename, limit: 100 });
-    const object = objects?.find((entry) => entry.name === filename);
+    const object = objects?.find((entry: { name: string; metadata?: Record<string, unknown> | null }) => entry.name === filename);
     if (error || !object) return null;
     const actualSize = Number(object.metadata?.size);
     const actualMime = object.metadata?.mimetype;
