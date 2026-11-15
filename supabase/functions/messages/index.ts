@@ -55,7 +55,7 @@ type AttachmentReference = {
 };
 
 async function validateAttachments(
-  client: ReturnType<typeof createClient>,
+  client: { storage: any },
   ownerId: string,
   input: unknown,
 ): Promise<AttachmentReference[] | null> {
