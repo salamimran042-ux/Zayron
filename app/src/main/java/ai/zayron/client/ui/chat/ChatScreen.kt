@@ -1,5 +1,10 @@
 package ai.zayron.client.ui.chat
 
+import android.app.Activity
+import android.content.Intent
+import android.speech.RecognizerIntent
+import java.util.Locale
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -17,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
@@ -50,6 +56,28 @@ fun ChatScreen(
     val canSend = !chatViewModel.isSending &&
         pendingAttachments.none { it.isUploading || it.error != null } &&
         (draft.isNotBlank() || pendingAttachments.any { it.uploaded != null })
+    val speechInput = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.trim()
+            if (!spoken.isNullOrBlank()) {
+                draft = listOf(draft.trim(), spoken).filter { it.isNotEmpty() }.joinToString(" ")
+            }
+        }
+    }
+    val speechIntent = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak your message to Zayron AI")
+        }
+    }
     val attachmentPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { selectedUris ->
@@ -307,6 +335,12 @@ fun ChatScreen(
                 modifier = Modifier.padding(start = 5.dp, end = 7.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                IconButton(
+                    onClick = { speechInput.launch(speechIntent) },
+                    enabled = !chatViewModel.isSending
+                ) {
+                    Icon(Icons.Default.Mic, contentDescription = "Dictate message")
+                }
                 IconButton(
                     onClick = {
                         attachmentPicker.launch(
