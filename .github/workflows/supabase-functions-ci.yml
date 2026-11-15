@@ -1,0 +1,49 @@
+name: Zayron AI Supabase Functions CI
+
+on:
+  push:
+    branches:
+      - main
+      - feature/backend-connection-wiring
+    paths:
+      - "supabase/functions/**"
+      - ".github/workflows/supabase-functions-ci.yml"
+  pull_request:
+    branches:
+      - main
+      - feature/shop-foundation
+      - feature/backend-connection-wiring
+    paths:
+      - "supabase/functions/**"
+      - ".github/workflows/supabase-functions-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-functions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Type-check Supabase Edge Functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out committed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check every Edge Function
+        run: |
+          set -euo pipefail
+          for entrypoint in supabase/functions/*/index.ts; do
+            echo "Checking $entrypoint"
+            deno check "$entrypoint"
+          done
