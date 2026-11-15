@@ -39,7 +39,7 @@ async function authenticatedClient(request: Request) {
   if (!url || !key) return { error: "service_not_configured" as const };
   const client = createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-    global: { headers: { Authorization: \`Bearer \${match[1]}\` } },
+    global: { headers: { Authorization: `Bearer ${match[1]}` } },
   });
   const { data, error } = await client.auth.getUser(match[1]);
   if (error || !data.user?.id) return { error: "unauthorized" as const };
