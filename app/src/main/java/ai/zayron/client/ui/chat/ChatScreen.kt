@@ -3,6 +3,7 @@ package ai.zayron.client.ui.chat
 import android.app.Activity
 import android.content.Intent
 import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
 import java.util.Locale
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
@@ -30,6 +32,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +54,22 @@ fun ChatScreen(
     var activeSkill by rememberSaveable { mutableStateOf<String?>(null) }
     var activeSkillRequest by rememberSaveable { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+    var speechEngine by remember { mutableStateOf<TextToSpeech?>(null) }
+    var speechReady by remember { mutableStateOf(false) }
+
+    DisposableEffect(context) {
+        val engine = TextToSpeech(context) { result ->
+            speechReady = result == TextToSpeech.SUCCESS
+        }
+        speechEngine = engine
+        onDispose {
+            engine.stop()
+            engine.shutdown()
+            speechEngine = null
+            speechReady = false
+        }
+    }
     val messages = chatViewModel.messages
     val pendingAttachments = chatViewModel.pendingAttachments
     val canSend = !chatViewModel.isSending &&
@@ -256,6 +275,31 @@ fun ChatScreen(
                                     color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface,
                                     style = MaterialTheme.typography.bodySmall
                                 )
+                            }
+                            if (!isUser && message.text.isNotBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            speechEngine?.speak(
+                                                message.text,
+                                                TextToSpeech.QUEUE_FLUSH,
+                                                null,
+                                                "zayron-response"
+                                            )
+                                        },
+                                        enabled = speechReady,
+                                        modifier = Modifier.size(34.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.VolumeUp,
+                                            contentDescription = "Read response aloud",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
                             }
                             Spacer(Modifier.height(4.dp))
                             Text(
