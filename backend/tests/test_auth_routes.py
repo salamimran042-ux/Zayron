@@ -182,3 +182,40 @@ def test_password_reset_returns_generic_accepted_response():
     assert response.status_code == 202
     assert response.json() == {"status": "accepted"}
     assert fake.calls == [("reset", "user@example.com")]
+
+
+
+def test_registration_returns_immediate_session_when_email_confirmation_is_disabled():
+    class ImmediateRegistrationAuth(FakeSupabaseAuth):
+        async def sign_up(self, email, password, display_name=None):
+            self.calls.append(("register", email, password, display_name))
+            return {
+                "confirmation_required": False,
+                "user": {"id": "user-123", "email": email},
+                "session": {
+                    "access_token": "access-token",
+                    "refresh_token": "refresh-token",
+                    "expires_at": 2_000_000_000,
+                    "user": {
+                        "id": "user-123",
+                        "email": email,
+                        "display_name": display_name,
+                    },
+                },
+            }
+
+    fake = ImmediateRegistrationAuth()
+    with TestClient(app) as client:
+        app.state.supabase_auth = fake
+        response = client.post("/api/v1/auth/register", json={
+            "email": "new@example.com",
+            "password": "safe-password",
+            "display_name": "New User",
+        })
+
+    assert response.status_code == 202
+    assert response.json()["confirmation_required"] is False
+    assert response.json()["session"]["access_token"] == "access-token"
+    assert response.json()["session"]["refresh_token"] == "refresh-token"
+    assert response.json()["session"]["user"]["id"] == "user-123"
+    assert "safe-password" not in response.text
