@@ -1,0 +1,76 @@
+name: Zayron staging API smoke test
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zayron-staging-api-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke-test:
+    name: Verify live staging API routes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check staging endpoints without credentials
+        env:
+          STAGING_API_BASE_URL: https://zayron-ai-api-staging.onrender.com
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          base = os.environ["STAGING_API_BASE_URL"].rstrip("/")
+
+          def request(path, payload=None):
+              data = None if payload is None else json.dumps(payload).encode()
+              headers = {"Accept": "application/json"}
+              if data is not None:
+                  headers["Content-Type"] = "application/json"
+              req = urllib.request.Request(base + path, data=data, headers=headers)
+              try:
+                  with urllib.request.urlopen(req, timeout=25) as response:
+                      return response.status, response.read()
+              except urllib.error.HTTPError as error:
+                  return error.code, error.read()
+
+          checks = {}
+          checks["health"] = request("/health")
+          checks["config_status"] = request("/config/status")
+          checks["openapi"] = request("/openapi.json")
+          checks["chat_auth_gate"] = request(
+              "/api/v1/chat/stream",
+              {
+                  "requestId": "staging-smoke-no-credential",
+                  "conversationId": None,
+                  "messages": [{"role": "user", "content": "Smoke test"}],
+              },
+          )
+
+          for name, (status, _) in checks.items():
+              print(f"{name}: HTTP {status}")
+
+          assert checks["health"][0] == 200, "Staging health endpoint is not healthy."
+          assert checks["config_status"][0] == 200, "Configuration status route is missing or unavailable."
+          assert checks["openapi"][0] == 200, "OpenAPI document is unavailable."
+          assert checks["chat_auth_gate"][0] == 401, "Chat route did not enforce authentication."
+
+          openapi = json.loads(checks["openapi"][1])
+          paths = openapi.get("paths", {})
+          assert "/config/status" in paths, "OpenAPI does not document /config/status."
+          assert "/api/v1/chat/stream" in paths, "OpenAPI does not document the chat stream route."
+
+          status_payload = json.loads(checks["config_status"][1])
+          integrations = status_payload.get("integrations", {})
+          print("AI provider configured:", integrations.get("ai_provider") == "configured")
+          print("Staging API route and authentication smoke tests passed.")
+          PY
