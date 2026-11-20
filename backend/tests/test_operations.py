@@ -37,3 +37,24 @@ def test_openapi_documents_the_expected_operational_and_chat_routes():
     assert "/health" in paths
     assert "/config/status" in paths
     assert "/api/v1/chat/stream" in paths
+
+from pydantic import SecretStr
+
+from app.core.config import Settings
+
+
+def test_ai_provider_is_reported_configured_only_when_all_values_exist():
+    complete = Settings(
+        _env_file=None,
+        ai_provider_base_url="https://api.groq.com/openai/v1",
+        ai_provider_api_key=SecretStr("unit-test-only"),
+        ai_provider_model="openai/gpt-oss-20b",
+    )
+    incomplete = Settings(
+        _env_file=None,
+        ai_provider_base_url="https://api.groq.com/openai/v1",
+        ai_provider_model="openai/gpt-oss-20b",
+    )
+
+    assert complete.integration_status()["ai_provider"] == "configured"
+    assert incomplete.integration_status()["ai_provider"] == "not_configured"
